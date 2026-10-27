@@ -7,6 +7,7 @@ source "$SCRIPT_DIR/common"
 source "$SCRIPT_DIR/install_binaries"
 source "$SCRIPT_DIR/create_cluster"
 source "$SCRIPT_DIR/kube_vip"
+source "$SCRIPT_DIR/install_etcdctl"
 source "$SCRIPT_DIR/delete_cluster"
 source "$SCRIPT_DIR/cleanup"
 
@@ -32,6 +33,7 @@ while true; do
     "Install binaries" \
     "Create cluster" \
     "Install kube-vip" \
+    "Install etcdctl" \
     "Delete cluster" \
     "Cleanup" \
     "Exit")
@@ -45,6 +47,9 @@ while true; do
       ;;
     "Install kube-vip")
       install_kube_vip || log_error "kube-vip installation failed"
+      ;;
+    "Install etcdctl")
+      install_etcdctl || log_error "etcdctl installation failed"
       ;;
     "Delete cluster")
       delete_cluster || log_error "Cluster deletion failed"

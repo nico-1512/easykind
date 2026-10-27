@@ -1,0 +1,69 @@
+#!/bin/bash
+set -euo pipefail
+
+source_common () {
+  source "$(dirname "${BASH_SOURCE[0]}")/common"
+}
+
+install_etcdctl () {
+  local cluster_name=""
+  local nodes=""
+  local etcd_version=""
+  local arch=""
+  local tmpdir=""
+
+  cluster_name=$(request_user_input "Enter the kind cluster name: ")
+
+  if ! kind get clusters 2>/dev/null | grep -qx "$cluster_name"; then
+    log_error "Kind cluster '${cluster_name}' not found"
+    return 1
+  fi
+
+  nodes="$(kind get nodes --name "$cluster_name" | grep control-plane || true)"
+  if [[ -z "$nodes" ]]; then
+    log_error "No control-plane nodes found for cluster '${cluster_name}'"
+    return 1
+  fi
+
+  case "$(uname -m)" in
+    x86_64|amd64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *)
+      log_error "Unsupported architecture: $(uname -m)"
+      return 1
+      ;;
+  esac
+
+  releases="$(curl -fsSL https://api.github.com/repos/etcd-io/etcd/releases/latest)"
+  if [[ "$releases" =~ \"tag_name\":[[:space:]]*\"([^\"]+)\" ]]; then
+    etcd_version="${BASH_REMATCH[1]}"
+  else
+    log_error "Could not determine the latest etcd version"
+    return 1
+  fi
+  etcd_version="${ETCDCTL_VERSION:-$etcd_version}"
+
+  log_info "Installing etcdctl ${etcd_version} into control-plane nodes of cluster '${cluster_name}'"
+
+  tmpdir="$(mktemp -d)"
+  local tarball="etcd-${etcd_version}-linux-${arch}.tar.gz"
+  local url="https://github.com/etcd-io/etcd/releases/download/${etcd_version}/${tarball}"
+
+  curl -fsSL -o "${tmpdir}/${tarball}" "$url"
+  tar -xzf "${tmpdir}/${tarball}" -C "$tmpdir"
+
+  while IFS= read -r node; do
+    [[ -z "$node" ]] && continue
+    log_info "Copying etcdctl to ${node}"
+    docker cp "${tmpdir}/etcd-${etcd_version}-linux-${arch}/etcdctl" "${node}:/usr/local/bin/etcdctl"
+    docker exec "${node}" chmod +x /usr/local/bin/etcdctl
+  done <<< "$nodes"
+
+  rm -rf "$tmpdir"
+  log_info "etcdctl installed successfully"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  install_etcdctl
+fi

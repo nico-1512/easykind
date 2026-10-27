@@ -8,6 +8,7 @@ EASYKIND_SCRIPTS=(
   install_binaries
   create_cluster
   kube_vip
+  install_etcdctl
   delete_cluster
   cleanup
   common

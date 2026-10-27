@@ -5,7 +5,7 @@ Bash scripts to set up a local Kind (Kubernetes-in-Docker) cluster on Linux with
 
 ## Install / entrypoints
 - Bootstrap: `./bootstrap.sh` (requires sudo; installs Go/gum, sets inotify limits, copies scripts to `/usr/local/bin` and assets to `/usr/local/share/easykind`, adds Go bin to PATH in `~/.bashrc`).
-- CLI menu: `main` (installed to PATH). Sources `scripts/common`, `install_binaries`, `create_cluster`, `kube_vip`, `delete_cluster`, `cleanup`. Requires `gum`. Shows menu: Install binaries → Create cluster → Install kube-vip → Delete cluster → Cleanup → Exit.
+- CLI menu: `main` (installed to PATH). Sources `scripts/common`, `install_binaries`, `create_cluster`, `kube_vip`, `install_etcdctl`, `delete_cluster`, `cleanup`. Requires `gum`. Shows menu: Install binaries → Create cluster → Install kube-vip → Install etcdctl → Delete cluster → Cleanup → Exit.
 - Templates: `script_template` shows pattern (source `common`, define function, run if executed directly).
 
 ## Commands (exact)
@@ -13,8 +13,9 @@ Bash scripts to set up a local Kind (Kubernetes-in-Docker) cluster on Linux with
 - `./scripts/install_binaries` - installs docker (via get.docker.com), kind via `go install sigs.k8s.io/kind@v0.33.0` (needs Go), kubectl (downloads latest stable from dl.k8s.io for detected arch), helm (via get-helm-3 script), adds `alias k='kubectl'` to `~/.bashrc`.
 - `./scripts/create_cluster` - prompts for cluster name; if exists, returns early. Looks for cluster config via `cluster_config_path()`: checks `KIND_CLUSTER_CONFIG` env var first, then `scripts/../assets/config-cluster.yaml`, then `/usr/local/share/easykind/assets/config-cluster.yaml`. Prompts to retain failed nodes (`--retain`). Runs `kind create cluster --name ... --config ... [--retain]`.
 - `./scripts/kube_vip` - prompts for cluster name (must exist). Gets latest kube-vip release from GitHub API (or `KUBE_VIP_VERSION`). Determines LoadBalancer range from `docker network inspect kind` (16-bit -> `a.b.100.10-a.b.100.30`, 24-bit -> `a.b.c.100-a.b.c.130`); else prompts. Installs cloud controller, creates ConfigMap `kubevip` in `kube-system` with `range-global`, applies RBAC, deploys daemonset via `docker run ghcr.io/kube-vip/kube-vip:${kv_version} manifest daemonset --services --inCluster --arp --interface eth0`, waits for rollout.
+- `./scripts/install_etcdctl` - prompts for cluster name (must exist). Gets latest etcd release from GitHub API (or `ETCDCTL_VERSION`). Downloads tarball for detected arch, extracts `etcdctl`, copies to `/usr/local/bin/etcdctl` on each control-plane node via `docker cp` and `docker exec chmod +x`.
 - `./scripts/delete_cluster` - prompts for name with retry if not found; confirms before `kind delete cluster`.
-- `./scripts/cleanup` - prompts to remove installed scripts (`main,install_binaries,create_cluster,kube_vip,delete_cluster,cleanup,common`) from `/usr/local/bin` and assets from `/usr/local/share/easykind`.
+- `./scripts/cleanup` - prompts to remove installed scripts (`main,install_binaries,create_cluster,kube_vip,install_etcdctl,delete_cluster,cleanup,common`) from `/usr/local/bin` and assets from `/usr/local/share/easykind`.
 
 ## Gotchas / repo-specific facts
 - `bootstrap.sh` removes legacy `${BIN_DIR}/install` if present (conflicts with system install). Copies all files from `scripts/*` (only files) to `/usr/local/bin` with +x. Copies all files from `assets/*` to `${SHARE_DIR}/assets/`.
