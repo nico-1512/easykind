@@ -1,0 +1,82 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source_common () {
+    source "${SCRIPT_DIR}/common"
+}
+
+install_binaries () {
+  log_info "Installing needed binaries"
+
+  if command -v go >/dev/null 2>&1; then
+    export PATH="$(go env GOPATH)/bin:${PATH}"
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    log_info "Docker already installed"
+  else
+    log_info "Installing and setting up docker"
+    local docker_script
+    docker_script="$(mktemp)"
+    curl -fsSL https://get.docker.com -o "$docker_script"
+    sudo sh "$docker_script"
+    rm -f "$docker_script"
+    sudo groupadd docker 2>/dev/null || true
+    sudo usermod -aG docker "$(id -un)"
+    log_warning "Docker group updated. Log out and back in for it to take effect."
+  fi
+
+  if command -v kind >/dev/null 2>&1; then
+    log_info "kind already installed"
+  else
+    log_info "Installing kind"
+    go install sigs.k8s.io/kind@v0.33.0
+  fi
+
+  if command -v kubectl >/dev/null 2>&1; then
+    log_info "kubectl already installed"
+  else
+    log_info "Installing kubectl"
+    local arch kubectl_version kubectl_bin
+    case "$(uname -m)" in
+      x86_64|amd64) arch="amd64" ;;
+      aarch64|arm64) arch="arm64" ;;
+      *)
+        log_error "Unsupported architecture: $(uname -m)"
+        return 1
+        ;;
+    esac
+    kubectl_version="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
+    kubectl_bin="$(mktemp)"
+    curl -fsSL -o "$kubectl_bin" "https://dl.k8s.io/release/${kubectl_version}/bin/linux/${arch}/kubectl"
+    sudo cp "$kubectl_bin" /usr/local/bin/kubectl
+    sudo chmod 0755 /usr/local/bin/kubectl
+    rm -f "$kubectl_bin"
+  fi
+
+  if command -v helm >/dev/null 2>&1; then
+    log_info "helm already installed"
+  else
+    log_info "Installing helm"
+    local helm_script
+    helm_script="$(mktemp)"
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 -o "$helm_script"
+    bash "$helm_script"
+    rm -f "$helm_script"
+  fi
+
+  log_info "Creating alias k for kubectl"
+  if ! grep -qF "alias k='kubectl'" "$HOME/.bashrc" 2>/dev/null; then
+    echo "alias k='kubectl'" >> "$HOME/.bashrc"
+    source "$HOME/.bashrc"
+  fi
+
+}
+
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  install_binaries
+fi

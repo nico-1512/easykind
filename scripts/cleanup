@@ -1,0 +1,46 @@
+#!/bin/bash
+set -euo pipefail
+
+BIN_DIR="/usr/local/bin"
+SHARE_DIR="/usr/local/share/easykind"
+EASYKIND_SCRIPTS=(
+  main
+  install_binaries
+  create_cluster
+  kube_vip
+  delete_cluster
+  cleanup
+  common
+)
+
+source_common () {
+  source "$(dirname "${BASH_SOURCE[0]}")/common"
+}
+
+cleanup_scripts_folder () {
+  local confirm_answer=""
+  local script
+
+  read -p "Remove EasyKind scripts from ${BIN_DIR} and assets from ${SHARE_DIR}? [y/N] " confirm_answer
+  case "$confirm_answer" in
+    [yY]|[yY][eE][sS]) ;;
+    *)
+      log_info "Cleanup cancelled"
+      return
+      ;;
+  esac
+
+  log_info "Removing EasyKind scripts from ${BIN_DIR}"
+  for script in "${EASYKIND_SCRIPTS[@]}"; do
+    sudo rm -f "${BIN_DIR}/${script}"
+  done
+
+  log_info "Removing EasyKind assets from ${SHARE_DIR}"
+  sudo rm -rf "${SHARE_DIR}"
+}
+
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  cleanup_scripts_folder
+fi

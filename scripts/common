@@ -1,0 +1,44 @@
+# ANSI color codes
+COLOR_BLUE='\033[0;34m'
+COLOR_ORANGE='\033[38;5;208m'
+COLOR_RED='\033[0;31m'
+COLOR_RESET='\033[0m'
+
+# Timestamp function
+timestamp() {
+    printf '%s' "$(command date '+%H:%M:%S')"
+}
+
+# Logging functions
+log_info() {
+    printf "${COLOR_BLUE}[%s] [INFO]${COLOR_RESET} %s\n" \
+        "$(timestamp)" "$*"
+}
+
+log_warning() {
+    printf "${COLOR_ORANGE}[%s] [WARNING]${COLOR_RESET} %s\n" \
+        "$(timestamp)" "$*"
+}
+
+log_error() {
+    printf "${COLOR_RED}[%s] [ERROR]${COLOR_RESET} %s\n" \
+        "$(timestamp)" "$*" >&2
+}
+
+# Request user input with validation
+# @1 Prompt message
+request_user_input() {
+  local prompt="$1"
+  local input_value=""
+
+  while [[ -z "$input_value" ]]; do
+    read -p "$prompt" input_value
+    if [[ -z "$input_value" ]]; then
+      log_error "Input cannot be empty"
+      continue
+    fi
+  done
+
+  printf '%s' "$input_value"
+}
+

@@ -1,0 +1,63 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "$SCRIPT_DIR/common"
+source "$SCRIPT_DIR/install_binaries"
+source "$SCRIPT_DIR/create_cluster"
+source "$SCRIPT_DIR/kube_vip"
+source "$SCRIPT_DIR/delete_cluster"
+source "$SCRIPT_DIR/cleanup"
+
+if command -v go >/dev/null 2>&1; then
+  export PATH="$(go env GOPATH)/bin:${PATH}"
+fi
+
+if ! command -v gum >/dev/null 2>&1; then
+  log_error "gum is required but not installed. See https://github.com/charmbracelet/gum"
+  exit 1
+fi
+
+gum style --foreground 212 --border double --padding "1 2" --margin "1" \
+  "EasyKind
+
+Run the scripts in this order:
+  1. Install binaries
+  2. Create cluster
+  3. Install kube-vip"
+
+while true; do
+  choice=$(gum choose --header "What do you want to do?" \
+    "Install binaries" \
+    "Create cluster" \
+    "Install kube-vip" \
+    "Delete cluster" \
+    "Cleanup" \
+    "Exit")
+
+  case "$choice" in
+    "Install binaries")
+      install_binaries || log_error "Binary installation failed"
+      ;;
+    "Create cluster")
+      create_cluster || log_error "Cluster creation failed"
+      ;;
+    "Install kube-vip")
+      install_kube_vip || log_error "kube-vip installation failed"
+      ;;
+    "Delete cluster")
+      delete_cluster || log_error "Cluster deletion failed"
+      ;;
+    "Cleanup")
+      cleanup_scripts_folder || log_error "Cleanup failed"
+      ;;
+    "Exit"|"")
+      log_info "Goodbye"
+      break
+      ;;
+    *)
+      log_warning "Unknown option: $choice"
+      ;;
+  esac
+done

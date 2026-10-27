@@ -1,0 +1,62 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source_common () {
+    source "${SCRIPT_DIR}/common"
+}
+
+cluster_config_path () {
+  local candidates=(
+    "${KIND_CLUSTER_CONFIG:-}"
+    "${SCRIPT_DIR}/../assets/config-cluster.yaml"
+    "/usr/local/share/easykind/assets/config-cluster.yaml"
+  )
+  local candidate
+
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+create_cluster () {
+
+  local cluster_name=""
+  local cluster_config=""
+  local retain_answer=""
+  local kind_args=()
+  cluster_name=$(request_user_input "Enter a name for the kind cluster: ")
+
+  if kind get clusters 2>/dev/null | grep -q "^${cluster_name}$"; then
+    log_info "Kind cluster '${cluster_name}' already exists"
+    return
+  fi
+
+  if ! cluster_config="$(cluster_config_path)"; then
+    log_error "Cluster config not found. Set KIND_CLUSTER_CONFIG or install assets/config-cluster.yaml."
+    return 1
+  fi
+
+  read -p "Retain failed cluster nodes for log collection? [y/N] " retain_answer
+  kind_args=(create cluster --name "${cluster_name}" --config "${cluster_config}")
+  case "$retain_answer" in
+    [yY]|[yY][eE][sS])
+      kind_args+=(--retain)
+      ;;
+  esac
+
+  log_info "Creating kind cluster '${cluster_name}' using ${cluster_config}"
+  kind "${kind_args[@]}"
+}
+
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  create_cluster
+fi

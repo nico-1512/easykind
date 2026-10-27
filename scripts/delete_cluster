@@ -1,0 +1,44 @@
+#!/bin/bash
+
+source_common () {
+  source "$(dirname "${BASH_SOURCE[0]}")/common"
+}
+
+delete_cluster () {
+  local cluster_name=""
+  local retry_answer=""
+  local confirm_answer=""
+
+  while true; do
+    cluster_name=$(request_user_input "Enter a name for the kind cluster: ")
+
+    if kind get clusters 2>/dev/null | grep -q "^${cluster_name}$"; then
+      break
+    fi
+
+    log_warning "Kind cluster '${cluster_name}' not found"
+    read -p "Try again? [Y/n] " retry_answer
+    case "$retry_answer" in
+      [nN]|[nN][oO])
+        log_info "Exiting"
+        return
+        ;;
+    esac
+  done
+
+  read -p "Are you sure you want to delete ${cluster_name} kind cluster? [y/N] " confirm_answer
+  case "$confirm_answer" in
+    [yY]|[yY][eE][sS])
+      log_info "Deleting kind cluster '${cluster_name}'"
+      kind delete cluster --name "$cluster_name"
+      ;;
+    *)
+      log_info "Deletion cancelled"
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  delete_cluster
+fi

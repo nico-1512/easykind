@@ -1,0 +1,84 @@
+#!/bin/bash
+set -euo pipefail
+
+source_common () {
+  source "$(dirname "${BASH_SOURCE[0]}")/common"
+}
+
+default_load_balancer_range () {
+  local subnet prefix network_ip a b c d
+
+  subnet="$(docker network inspect kind -f '{{ (index .IPAM.Config 0).Subnet }}' 2>/dev/null || true)"
+  [[ -z "$subnet" ]] && return 1
+
+  prefix="${subnet#*/}"
+  network_ip="${subnet%/*}"
+  IFS=. read -r a b c d <<< "$network_ip"
+
+  if (( prefix == 16 )); then
+    printf '%s.%s.100.10-%s.%s.100.30' "$a" "$b" "$a" "$b"
+  elif (( prefix == 24 )); then
+    printf '%s.%s.%s.100-%s.%s.%s.130' "$a" "$b" "$c" "$a" "$b" "$c"
+  else
+    return 1
+  fi
+}
+
+install_kube_vip () {
+  local cluster_name context releases kv_version
+  local default_range vip_range range_input
+
+  cluster_name=$(request_user_input "Enter the kind cluster name: ")
+
+  if ! kind get clusters 2>/dev/null | grep -qx "$cluster_name"; then
+    log_error "Kind cluster '${cluster_name}' not found"
+    return 1
+  fi
+
+  context="kind-${cluster_name}"
+
+  releases="$(curl -fsSL https://api.github.com/repos/kube-vip/kube-vip/releases/latest)"
+  if [[ "$releases" =~ \"tag_name\":[[:space:]]*\"([^\"]+)\" ]]; then
+    kv_version="${BASH_REMATCH[1]}"
+  else
+    log_error "Could not determine the latest kube-vip version"
+    return 1
+  fi
+  kv_version="${KUBE_VIP_VERSION:-$kv_version}"
+
+  if default_range="$(default_load_balancer_range)"; then
+    read -p "LoadBalancer IP range [${default_range}]: " range_input
+    vip_range="${range_input:-$default_range}"
+  else
+    vip_range=$(request_user_input "Enter the LoadBalancer IP range (e.g. 172.18.100.10-172.18.100.30): ")
+  fi
+
+  log_info "Installing kube-vip ${kv_version} in cluster '${cluster_name}'"
+
+  log_info "Deploying kube-vip cloud controller"
+  kubectl --context "$context" apply -f \
+    https://raw.githubusercontent.com/kube-vip/kube-vip-cloud-provider/main/manifest/kube-vip-cloud-controller.yaml
+
+  log_info "Configuring LoadBalancer IP range '${vip_range}'"
+  kubectl --context "$context" -n kube-system create configmap kubevip \
+    --from-literal "range-global=${vip_range}" \
+    --dry-run=client -o yaml | kubectl --context "$context" apply -f -
+
+  log_info "Creating kube-vip RBAC"
+  kubectl --context "$context" apply -f https://kube-vip.io/manifests/rbac.yaml
+
+  log_info "Deploying kube-vip DaemonSet"
+  docker run --rm --network host "ghcr.io/kube-vip/kube-vip:${kv_version}" \
+    manifest daemonset --services --inCluster --arp --interface eth0 \
+    | kubectl --context "$context" apply -f -
+
+  log_info "Waiting for kube-vip to become ready"
+  kubectl --context "$context" -n kube-system rollout status daemonset/kube-vip-ds --timeout=180s
+
+  log_info "kube-vip installed in cluster '${cluster_name}'"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  install_kube_vip
+fi
