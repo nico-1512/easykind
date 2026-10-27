@@ -33,7 +33,7 @@ while true; do
     "Install binaries" \
     "Create cluster" \
     "Install kube-vip" \
-    "Install etcdctl" \
+    "Install etcdctl/etcdutl" \
     "Delete cluster" \
     "Cleanup" \
     "Exit")
@@ -48,8 +48,8 @@ while true; do
     "Install kube-vip")
       install_kube_vip || log_error "kube-vip installation failed"
       ;;
-    "Install etcdctl")
-      install_etcdctl || log_error "etcdctl installation failed"
+    "Install etcdctl/etcdutl")
+      install_etcdutl || log_error "etcdctl/etcdutl installation failed"
       ;;
     "Delete cluster")
       delete_cluster || log_error "Cluster deletion failed"
