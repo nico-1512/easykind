@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common"
 source "$SCRIPT_DIR/install_binaries"
 source "$SCRIPT_DIR/create_cluster"
+source "$SCRIPT_DIR/install_calico"
 source "$SCRIPT_DIR/kube_vip"
 source "$SCRIPT_DIR/install_etcdctl"
 source "$SCRIPT_DIR/delete_cluster"
@@ -26,12 +27,14 @@ gum style --foreground 212 --border double --padding "1 2" --margin "1" \
 Run the scripts in this order:
   1. Install binaries
   2. Create cluster
-  3. Install kube-vip"
+  3. Install Calico
+  4. Install kube-vip"
 
 while true; do
   choice=$(gum choose --header "What do you want to do?" \
     "Install binaries" \
     "Create cluster" \
+    "Install Calico" \
     "Install kube-vip" \
     "Install etcdctl/etcdutl" \
     "Delete cluster" \
@@ -44,6 +47,9 @@ while true; do
       ;;
     "Create cluster")
       create_cluster || log_error "Cluster creation failed"
+      ;;
+    "Install Calico")
+      install_calico || log_error "Calico installation failed"
       ;;
     "Install kube-vip")
       install_kube_vip || log_error "kube-vip installation failed"

@@ -7,6 +7,7 @@ EASYKIND_SCRIPTS=(
   main
   install_binaries
   create_cluster
+  install_calico
   kube_vip
   install_etcdctl
   delete_cluster

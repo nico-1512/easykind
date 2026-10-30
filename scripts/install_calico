@@ -1,0 +1,59 @@
+#!/bin/bash
+set -euo pipefail
+
+source_common () {
+  source "$(dirname "${BASH_SOURCE[0]}")/common"
+}
+
+install_calico () {
+  local cluster_name context releases calico_version manifest_url
+
+  cluster_name=$(request_user_input "Enter the kind cluster name: ")
+
+  if ! kind get clusters 2>/dev/null | grep -qx "$cluster_name"; then
+    log_error "Kind cluster '${cluster_name}' not found"
+    return 1
+  fi
+
+  context="kind-${cluster_name}"
+
+  if kubectl --context "$context" -n kube-system get daemonset kindnet >/dev/null 2>&1; then
+    log_error "kindnet is still running in cluster '${cluster_name}'"
+    log_error "Recreate the cluster with networking.disableDefaultCNI: true before installing Calico"
+    return 1
+  fi
+
+  if kubectl --context "$context" -n kube-system get daemonset calico-node >/dev/null 2>&1; then
+    log_info "Calico is already installed in cluster '${cluster_name}'"
+    return
+  fi
+
+  releases="$(curl -fsSL https://api.github.com/repos/projectcalico/calico/releases/latest)"
+  if [[ "$releases" =~ \"tag_name\":[[:space:]]*\"([^\"]+)\" ]]; then
+    calico_version="${BASH_REMATCH[1]}"
+  else
+    log_error "Could not determine the latest Calico version"
+    return 1
+  fi
+  calico_version="${CALICO_VERSION:-$calico_version}"
+
+  manifest_url="https://raw.githubusercontent.com/projectcalico/calico/${calico_version}/manifests/calico.yaml"
+
+  log_info "Installing Calico ${calico_version} in cluster '${cluster_name}'"
+  log_info "Calico uses its default pod CIDR 192.168.0.0/16; the kind config must use the same podSubnet"
+  kubectl --context "$context" apply -f "$manifest_url"
+
+  log_info "Waiting for Calico to become ready"
+  kubectl --context "$context" -n kube-system rollout status daemonset/calico-node --timeout=300s
+  kubectl --context "$context" -n kube-system rollout status deployment/calico-kube-controllers --timeout=180s
+
+  log_info "Waiting for nodes to become Ready"
+  kubectl --context "$context" wait --for=condition=Ready nodes --all --timeout=300s
+
+  log_info "Calico installed in cluster '${cluster_name}'"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  install_calico
+fi
