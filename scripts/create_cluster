@@ -30,6 +30,9 @@ create_cluster () {
   local cluster_name=""
   local cluster_config=""
   local retain_answer=""
+  local kubernetes_version=""
+  local default_kubernetes_version="${KIND_KUBERNETES_VERSION:-v1.37.0}"
+  local node_image=""
   local kind_args=()
   cluster_name=$(request_user_input "Enter a name for the kind cluster: ")
 
@@ -43,15 +46,23 @@ create_cluster () {
     return 1
   fi
 
+  read -p "Enter Kubernetes version for kindest/node [${default_kubernetes_version}]: " kubernetes_version
+  kubernetes_version="${kubernetes_version:-$default_kubernetes_version}"
+  kubernetes_version="${kubernetes_version#kindest/node:}"
+  if [[ "$kubernetes_version" != v* ]]; then
+    kubernetes_version="v${kubernetes_version}"
+  fi
+  node_image="kindest/node:${kubernetes_version}"
+
   read -p "Retain failed cluster nodes for log collection? [y/N] " retain_answer
-  kind_args=(create cluster --name "${cluster_name}" --config "${cluster_config}")
+  kind_args=(create cluster --name "${cluster_name}" --config "${cluster_config}" --image "${node_image}")
   case "$retain_answer" in
     [yY]|[yY][eE][sS])
       kind_args+=(--retain)
       ;;
   esac
 
-  log_info "Creating kind cluster '${cluster_name}' using ${cluster_config}"
+  log_info "Creating kind cluster '${cluster_name}' using ${cluster_config} (${node_image})"
   kind "${kind_args[@]}"
 }
 

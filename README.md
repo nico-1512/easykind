@@ -48,7 +48,7 @@ main
 
 The menu walks you through:
 1. **Install binaries** - Docker, kind, kubectl, helm, adds `alias k='kubectl'` to `~/.bashrc`
-2. **Create cluster** - Prompts for cluster name, uses a Kind config, optional `--retain` for failed nodes
+2. **Create cluster** - Prompts for cluster name and Kubernetes (`kindest/node`) version, uses a Kind config, optional `--retain` for failed nodes
 3. **Install Calico** - Prompts for cluster name and installs Calico. The kind config must disable the default CNI and use the Calico pod subnet
 4. **Install kube-vip** - Prompts for cluster name, auto-detects LoadBalancer range from Docker `kind` network (or asks), deploys kube-vip cloud controller, ConfigMap, RBAC, and DaemonSet on `eth0`
 5. **Install Envoy Gateway** - Installs Envoy Gateway via Helm and creates the `eg` GatewayClass. A `Gateway` gets a kube-vip LoadBalancer address when created
@@ -66,6 +66,8 @@ The menu walks you through:
 3. `/usr/local/share/easykind/assets/config-cluster.yaml` (installed)
 
 The included `assets/config-cluster.yaml` creates 3 control-plane nodes and 1 worker. It disables the default CNI and sets `podSubnet: "192.168.0.0/16"` so Calico can be installed after the cluster is created.
+
+The Kubernetes version is prompted at creation time and passed as `--image kindest/node:<version>`. Press Enter to use the default (`v1.37.0`, the kind `v0.33.0` default) or set `KIND_KUBERNETES_VERSION` to override the default.
 
 ### Calico
 - Version: pulled from GitHub latest release, or set `CALICO_VERSION` (for example `v3.33.0`) to override
