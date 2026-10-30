@@ -1,0 +1,61 @@
+#!/bin/bash
+set -euo pipefail
+
+source_common () {
+  source "$(dirname "${BASH_SOURCE[0]}")/common"
+}
+
+install_envoy_gateway () {
+  local cluster_name context releases eg_version namespace
+
+  if ! command -v helm >/dev/null 2>&1; then
+    log_error "helm is required but not installed. Run the Install binaries step first."
+    return 1
+  fi
+
+  cluster_name=$(request_user_input "Enter the kind cluster name: ")
+
+  if ! kind get clusters 2>/dev/null | grep -qx "$cluster_name"; then
+    log_error "Kind cluster '${cluster_name}' not found"
+    return 1
+  fi
+
+  context="kind-${cluster_name}"
+  namespace="envoy-gateway-system"
+
+  releases="$(curl -fsSL https://api.github.com/repos/envoyproxy/gateway/releases/latest)"
+  if [[ "$releases" =~ \"tag_name\":[[:space:]]*\"([^\"]+)\" ]]; then
+    eg_version="${BASH_REMATCH[1]}"
+  else
+    log_error "Could not determine the latest Envoy Gateway version"
+    return 1
+  fi
+  eg_version="${ENVOY_GATEWAY_VERSION:-$eg_version}"
+
+  log_info "Installing Envoy Gateway ${eg_version} in cluster '${cluster_name}'"
+  helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm \
+    --kube-context "$context" \
+    --namespace "$namespace" \
+    --create-namespace \
+    --version "$eg_version"
+
+  log_info "Waiting for Envoy Gateway to become ready"
+  kubectl --context "$context" -n "$namespace" rollout status deployment/envoy-gateway --timeout=300s
+
+  log_info "Creating GatewayClass 'eg'"
+  kubectl --context "$context" apply -f - <<'EOF'
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+EOF
+
+  log_info "Envoy Gateway installed in cluster '${cluster_name}' (GatewayClass: eg)"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  install_envoy_gateway
+fi

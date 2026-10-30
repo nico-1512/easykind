@@ -9,6 +9,7 @@ EASYKIND_SCRIPTS=(
   create_cluster
   install_calico
   kube_vip
+  install_envoy_gateway
   install_etcdctl
   delete_cluster
   cleanup

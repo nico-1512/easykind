@@ -8,6 +8,7 @@ source "$SCRIPT_DIR/install_binaries"
 source "$SCRIPT_DIR/create_cluster"
 source "$SCRIPT_DIR/install_calico"
 source "$SCRIPT_DIR/kube_vip"
+source "$SCRIPT_DIR/install_envoy_gateway"
 source "$SCRIPT_DIR/install_etcdctl"
 source "$SCRIPT_DIR/delete_cluster"
 source "$SCRIPT_DIR/cleanup"
@@ -28,7 +29,8 @@ Run the scripts in this order:
   1. Install binaries
   2. Create cluster
   3. Install Calico
-  4. Install kube-vip"
+  4. Install kube-vip
+  5. Install Envoy Gateway"
 
 while true; do
   choice=$(gum choose --header "What do you want to do?" \
@@ -36,6 +38,7 @@ while true; do
     "Create cluster" \
     "Install Calico" \
     "Install kube-vip" \
+    "Install Envoy Gateway" \
     "Install etcdctl/etcdutl" \
     "Delete cluster" \
     "Cleanup" \
@@ -53,6 +56,9 @@ while true; do
       ;;
     "Install kube-vip")
       install_kube_vip || log_error "kube-vip installation failed"
+      ;;
+    "Install Envoy Gateway")
+      install_envoy_gateway || log_error "Envoy Gateway installation failed"
       ;;
     "Install etcdctl/etcdutl")
       install_etcdutl || log_error "etcdctl/etcdutl installation failed"

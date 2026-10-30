@@ -1,6 +1,6 @@
 # EasyKind
 
-A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux, install common CLI tools, install [Calico](https://www.tigera.io/project-calico/) as the CNI, and optionally set up [kube-vip](https://kube-vip.io/) as a LoadBalancer.
+A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux, install common CLI tools, install [Calico](https://www.tigera.io/project-calico/) as the CNI, optionally set up [kube-vip](https://kube-vip.io/) as a LoadBalancer, and optionally install [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API routes.
 
 ## What it installs
 
@@ -12,6 +12,7 @@ A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/
 - Go (if missing) and inotify limits tuned for Kind
 - [Calico](https://www.tigera.io/project-calico/) as a policy-capable CNI (required by the included cluster config)
 - Optional: [kube-vip](https://kube-vip.io/) for LoadBalancer services
+- Optional: [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API (`GatewayClass`, `Gateway`, `HTTPRoute`)
 
 ## Prerequisites
 
@@ -50,10 +51,11 @@ The menu walks you through:
 2. **Create cluster** - Prompts for cluster name, uses a Kind config, optional `--retain` for failed nodes
 3. **Install Calico** - Prompts for cluster name and installs Calico. The kind config must disable the default CNI and use the Calico pod subnet
 4. **Install kube-vip** - Prompts for cluster name, auto-detects LoadBalancer range from Docker `kind` network (or asks), deploys kube-vip cloud controller, ConfigMap, RBAC, and DaemonSet on `eth0`
-5. **Install etcdctl/etcdutl** - Copies `etcdctl` and `etcdutl` into the control-plane nodes
-6. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
-7. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
-8. **Exit**
+5. **Install Envoy Gateway** - Installs Envoy Gateway via Helm and creates the `eg` GatewayClass. A `Gateway` gets a kube-vip LoadBalancer address when created
+6. **Install etcdctl/etcdutl** - Copies `etcdctl` and `etcdutl` into the control-plane nodes
+7. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
+8. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
+9. **Exit**
 
 ## Configuration
 
@@ -76,6 +78,12 @@ The included `assets/config-cluster.yaml` creates 3 control-plane nodes and 1 wo
 - Interface: hardcoded to `eth0`
 - Context: uses `kind-<cluster_name>`
 
+### Envoy Gateway
+- Version: pulled from GitHub latest release, or set `ENVOY_GATEWAY_VERSION` (for example `v1.9.3`) to override
+- Helm release: `eg` in namespace `envoy-gateway-system`
+- Creates `GatewayClass` `eg`; create `Gateway` and `HTTPRoute` resources to expose workloads
+- Install after kube-vip if the `Gateway` should receive a LoadBalancer address
+
 ## Development
 
 Scripts are modular and can be run directly or sourced:
@@ -89,6 +97,7 @@ Run from repo root for dev:
 ./scripts/create_cluster
 ./scripts/install_calico
 ./scripts/kube_vip
+./scripts/install_envoy_gateway
 ./scripts/delete_cluster
 ./scripts/cleanup
 ```
@@ -100,6 +109,7 @@ Run from repo root for dev:
 - **Cluster config missing**: Set `KIND_CLUSTER_CONFIG=/path/to/config.yaml` or copy a config to `assets/` before running.
 - **Calico refuses to install**: The cluster still has kindnet. Recreate the cluster with `networking.disableDefaultCNI: true` and `podSubnet: "192.168.0.0/16"` before running `install_calico`.
 - **kube-vip range wrong / network not found**: Ensure Docker is running and the `kind` network exists (`docker network inspect kind`). If not using default Kind subnet, you'll be prompted to enter a range manually.
+- **Envoy Gateway Gateway has no address**: Install kube-vip first, or check that the `Gateway` service received a LoadBalancer IP.
 - **Go PATH**: If `kind` isn't found after install, ensure `$(go env GOPATH)/bin` is in your PATH (bootstrap adds it to `~/.bashrc`).
 - **Legacy conflict**: `bootstrap.sh` removes `/usr/local/bin/install` if it exists.
 
