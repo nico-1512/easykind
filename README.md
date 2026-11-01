@@ -99,17 +99,18 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 - Install after Calico; kube-vip and Envoy Gateway are not required
 
 ### GitOps
-- Run after **Install Argo CD**. Registers the Git repository as an Argo CD repository Secret and creates one Argo `Application` per selected component; select nothing to register the repository only
+- Run after **Install Argo CD**. Registers the Git repository as an Argo CD repository Secret and creates one Argo `Application` for the path you choose
 - Repository URL: required at the prompt; there is no default. For automation, set `GITOPS_REPO_URL`
+- Repository path: prompted at setup; press Enter to use the repository root (`.`), or set `GITOPS_REPO_PATH`. Paths are relative to the repository root
+- Application name: derived from the repository name and path basename; destination namespace defaults to `default`
 - Authentication: public repository, private HTTPS with username + token, or private SSH with a private key
 - Private HTTPS (recommended for GitHub): create a fine-grained PAT with **Contents: Read-only** for that repo. Use your GitHub username (or `x-access-token`) and the PAT as the password
 - Private HTTPS stores `username` and `password` in the Argo CD repository Secret; private SSH stores `sshPrivateKey`. GitHub/GitLab SSH host keys are already trusted by Argo CD; add self-hosted host keys to `argocd-ssh-known-hosts-cm`
 - Default branch: `main`; override with `GITOPS_REPO_BRANCH`
-- Current components: `restore-demo` and `nginx-probe`
-- Applications use automated sync with `prune: false` and `selfHeal: true`, so existing objects are adopted and updated but not deleted
+- The Application uses automated sync with `prune: false` and `selfHeal: true`, so existing objects are adopted and updated but not deleted
 - Use Argo CD for workloads and post-bootstrap add-ons. Envoy Gateway, Gateway API routes and other Helm/Kustomize applications can be added later as Argo Applications
 - Does not manage Calico, kube-vip bootstrap, Argo CD itself, node binaries, Kubernetes upgrades or etcd backup/restore; those remain in the bootstrap/manual scripts
-- Add new components to the arrays in `scripts/configure_gitops`; see `kiratech-challenge/gitops/README.md`
+- See `kiratech-challenge/gitops/README.md` for repository layout and platform add-ons
 
 ### Upgrade
 - Target: prompted at upgrade time. Press Enter to use the latest patch of the next Kubernetes minor (from `dl.k8s.io/release/stable-1.<next>.txt`), or type a version. Set `KIND_KUBERNETES_UPGRADE_VERSION` to change the default shown in the prompt

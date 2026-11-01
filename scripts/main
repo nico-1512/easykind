@@ -29,7 +29,7 @@ gum style --foreground 212 --border double --padding "1 2" --margin "1" \
   "EasyKind
 
 Run steps 1-7 once to bootstrap the cluster.
-After step 7, deploy workloads from the GitOps repo instead of this menu.
+After step 7, manage workloads from the GitOps repo instead of this menu.
 
 Run the scripts in this order:
   1. Install binaries
