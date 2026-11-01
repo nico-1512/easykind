@@ -54,7 +54,7 @@ The menu walks you through:
 4. **Install kube-vip** - Prompts for cluster name and kube-vip version (Enter uses the latest release), auto-detects LoadBalancer range from Docker `kind` network (or asks), deploys kube-vip cloud controller, ConfigMap, RBAC, and DaemonSet on `eth0`
 5. **Install Envoy Gateway** - Prompts for cluster name and Envoy Gateway version (Enter uses the latest release), installs it via Helm, and creates the `eg` GatewayClass. A `Gateway` gets a kube-vip LoadBalancer address when created
 6. **Install Argo CD** - Prompts for cluster name and Argo CD version (Enter uses the latest release), applies the upstream install manifest, and waits for the Argo CD components to become ready
-7. **Configure GitOps** - Registers a public Git repository in Argo CD and creates Argo Applications for the selected Kubernetes resources
+7. **Configure GitOps** - Registers a Git repository in Argo CD and asks which repository path to manage (Enter uses the repository root)
 8. **Install etcdctl/etcdutl** - Prompts for cluster name and etcd version (Enter uses the latest release), then copies `etcdctl` and `etcdutl` into the control-plane nodes
 9. **Upgrade cluster** - Prompts for cluster name and target Kubernetes version (Enter uses the latest patch of the next minor), then upgrades the control-plane and worker nodes in place
 10. **Delete cluster** - Delete an existing cluster (with confirmation/retry)

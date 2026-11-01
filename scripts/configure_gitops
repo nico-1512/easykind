@@ -72,7 +72,7 @@ configure_gitops () {
   fi
 
   log_info "Use Argo CD for workloads and post-bootstrap add-ons."
-  log_info "Choose a path in the repository; press Enter to use the repository root (.)."
+  log_info "Choose the repository path Argo CD should manage; press Enter to use the repository root (.)."
   log_info "Keep kind, Calico, kube-vip bootstrap, Argo CD, etcd tools, upgrades and restore in EasyKind."
 
   repo_url="${GITOPS_REPO_URL:-}"
@@ -129,7 +129,7 @@ configure_gitops () {
 
   path_input="${GITOPS_REPO_PATH:-}"
   if [[ -z "$path_input" ]]; then
-    read -p "Path within the repository [.]: " path_input
+    read -p "Repository path Argo CD should manage [.]: " path_input
   else
     log_info "Using repository path from GITOPS_REPO_PATH"
   fi
