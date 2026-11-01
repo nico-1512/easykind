@@ -42,6 +42,7 @@ install_etcdctl () {
     return 1
   fi
   etcd_version="${ETCDCTL_VERSION:-$etcd_version}"
+  etcd_version=$(request_version "Enter the etcd version" "${etcd_version}")
 
   log_info "Installing etcdctl ${etcd_version} into control-plane nodes of cluster '${cluster_name}'"
 
@@ -105,6 +106,7 @@ install_etcdutl () {
     return 1
   fi
   etcd_version="${ETCDCTL_VERSION:-$etcd_version}"
+  etcd_version=$(request_version "Enter the etcd version" "${etcd_version}")
 
   log_info "Installing etcdctl and etcdutl ${etcd_version} into control-plane nodes of cluster '${cluster_name}'"
 

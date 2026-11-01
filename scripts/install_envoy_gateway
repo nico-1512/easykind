@@ -31,6 +31,7 @@ install_envoy_gateway () {
     return 1
   fi
   eg_version="${ENVOY_GATEWAY_VERSION:-$eg_version}"
+  eg_version=$(request_version "Enter the Envoy Gateway version" "${eg_version}")
 
   log_info "Installing Envoy Gateway ${eg_version} in cluster '${cluster_name}'"
   helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm \

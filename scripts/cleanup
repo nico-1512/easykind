@@ -11,6 +11,7 @@ EASYKIND_SCRIPTS=(
   kube_vip
   install_envoy_gateway
   install_etcdctl
+  upgrade_cluster
   delete_cluster
   cleanup
   common

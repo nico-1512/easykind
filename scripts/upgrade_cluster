@@ -1,0 +1,326 @@
+#!/bin/bash
+set -euo pipefail
+
+source_common () {
+  source "$(dirname "${BASH_SOURCE[0]}")/common"
+}
+
+upgrade_install_binary () {
+  local tmpdir="$1"
+  local node="$2"
+  local bin="$3"
+
+  if ! docker cp "${tmpdir}/${bin}" "${node}:/usr/bin/${bin}.new"; then
+    log_error "Could not copy ${bin} into '${node}'"
+    return 1
+  fi
+  if ! docker exec "$node" sh -c "chmod +x /usr/bin/${bin}.new && mv /usr/bin/${bin}.new /usr/bin/${bin}"; then
+    log_error "Could not install ${bin} in '${node}'"
+    return 1
+  fi
+}
+
+upgrade_step () {
+  local description="$1"
+  shift
+
+  if ! "$@"; then
+    log_error "${description}"
+    return 1
+  fi
+}
+
+upgrade_wait_for_node () {
+  local context="$1"
+  local node="$2"
+  local target_version="$3"
+
+  until kubectl --context "$context" get node "$node" \
+    -o jsonpath='{.status.nodeInfo.kubeletVersion}' 2>/dev/null \
+    | grep -q "^${target_version}"; do
+    sleep 2
+  done
+  kubectl --context "$context" wait --for=condition=Ready "node/${node}" --timeout=180s
+}
+
+upgrade_cluster () {
+  local cluster_name=""
+  local context=""
+  local current_version=""
+  local current_minor=""
+  local target_version=""
+  local target_minor=""
+  local target_minor_number=""
+  local default_target=""
+  local arch=""
+  local tmpdir=""
+  local confirm_answer=""
+  local node=""
+  local bin=""
+  local expected=""
+  local actual=""
+  local nodes=()
+  local workers=()
+  local first_cp=""
+
+  for bin in docker kind kubectl curl sha256sum; do
+    if ! command -v "$bin" >/dev/null 2>&1; then
+      log_error "${bin} is required but not installed"
+      return 1
+    fi
+  done
+
+  cluster_name=$(request_user_input "Enter the kind cluster name: ")
+
+  if ! kind get clusters 2>/dev/null | grep -qx "$cluster_name"; then
+    log_error "Kind cluster '${cluster_name}' not found"
+    return 1
+  fi
+
+  context="kind-${cluster_name}"
+
+  current_version="$(kubectl --context "$context" get --raw /version \
+    | sed -n 's/.*"gitVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  if [[ -z "$current_version" ]]; then
+    log_error "Could not determine the current Kubernetes version of cluster '${cluster_name}'"
+    return 1
+  fi
+
+  current_minor="${current_version#v1.}"
+  current_minor="${current_minor%%.*}"
+  if ! [[ "$current_minor" =~ ^[0-9]+$ ]]; then
+    log_error "Could not parse the current Kubernetes minor version from '${current_version}'"
+    return 1
+  fi
+  target_minor="$((current_minor + 1))"
+
+  if ! default_target="$(curl -fsSL "https://dl.k8s.io/release/stable-1.${target_minor}.txt")"; then
+    default_target=""
+  fi
+  default_target="${KIND_KUBERNETES_UPGRADE_VERSION:-$default_target}"
+
+  if [[ -n "$default_target" ]]; then
+    target_version=$(request_version "Enter the Kubernetes version to upgrade to" "$default_target")
+  else
+    log_warning "No stable v1.${target_minor}.x release found; enter a target version manually"
+    target_version=$(request_user_input "Enter the Kubernetes version to upgrade to (e.g. v1.${target_minor}.0): ")
+  fi
+
+  target_version="${target_version#kindest/node:}"
+  if [[ "$target_version" != v* ]]; then
+    target_version="v${target_version}"
+  fi
+
+  target_minor_number="${target_version#v1.}"
+  target_minor_number="${target_minor_number%%.*}"
+  if ! [[ "$target_minor_number" =~ ^[0-9]+$ ]]; then
+    log_error "Invalid target version '${target_version}'"
+    return 1
+  fi
+
+  if [[ "$target_version" == "$current_version" ]]; then
+    log_info "Cluster '${cluster_name}' is already running ${current_version}"
+    return
+  fi
+
+  if (( target_minor_number < current_minor )); then
+    log_error "Downgrades are not supported (current ${current_version}, target ${target_version})"
+    return 1
+  fi
+
+  if (( target_minor_number > current_minor + 1 )); then
+    log_error "Kubernetes minor versions cannot be skipped: upgrade from ${current_version} to v1.$((current_minor + 1)).x first"
+    return 1
+  fi
+
+  case "$(uname -m)" in
+    x86_64|amd64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *)
+      log_error "Unsupported architecture: $(uname -m)"
+      return 1
+      ;;
+  esac
+
+  mapfile -t nodes < <(kubectl --context "$context" get nodes --no-headers \
+    | awk '$3 ~ /control-plane/ {print $1}')
+  mapfile -t workers < <(kubectl --context "$context" get nodes --no-headers \
+    | awk '$3 !~ /control-plane/ {print $1}')
+
+  if (( ${#nodes[@]} == 0 )); then
+    log_error "No control-plane nodes found for cluster '${cluster_name}'"
+    return 1
+  fi
+  first_cp="${nodes[0]}"
+
+  log_info "Cluster '${cluster_name}' is running ${current_version}"
+  log_info "Target Kubernetes version: ${target_version} (${arch})"
+  log_warning "Take and verify an etcd snapshot before upgrading"
+  read -p "Continue with the upgrade? [y/N] " confirm_answer
+  case "$confirm_answer" in
+    [yY]|[yY][eE][sS]) ;;
+    *)
+      log_info "Upgrade cancelled"
+      return
+      ;;
+  esac
+
+  tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$tmpdir"' RETURN
+  log_info "Downloading Kubernetes ${target_version} binaries"
+  for bin in kubeadm kubelet kubectl; do
+    if ! curl -fsSL -o "${tmpdir}/${bin}" \
+      "https://dl.k8s.io/release/${target_version}/bin/linux/${arch}/${bin}"; then
+      log_error "Could not download ${bin} ${target_version} for ${arch}"
+      rm -rf "$tmpdir"
+      return 1
+    fi
+    if ! curl -fsSL -o "${tmpdir}/${bin}.sha256" \
+      "https://dl.k8s.io/release/${target_version}/bin/linux/${arch}/${bin}.sha256"; then
+      log_error "Could not download the ${bin} checksum for ${target_version}"
+      rm -rf "$tmpdir"
+      return 1
+    fi
+    expected="$(cat "${tmpdir}/${bin}.sha256")"
+    actual="$(sha256sum "${tmpdir}/${bin}" | awk '{print $1}')"
+    if [[ "$actual" != "$expected" ]]; then
+      log_error "Checksum verification failed for ${bin}"
+      rm -rf "$tmpdir"
+      return 1
+    fi
+    chmod +x "${tmpdir}/${bin}"
+  done
+
+  log_info "Waiting for all nodes to be Ready"
+  if ! upgrade_step "Kubernetes nodes did not become Ready before the upgrade" \
+    kubectl --context "$context" wait --for=condition=Ready nodes --all --timeout=180s; then
+    return 1
+  fi
+
+  log_info "Installing kubeadm ${target_version} on all control-plane nodes"
+  for node in "${nodes[@]}"; do
+    if ! upgrade_install_binary "$tmpdir" "$node" kubeadm; then
+      return 1
+    fi
+    if ! upgrade_step "New kubeadm is not runnable on '${node}'" \
+      docker exec "$node" kubeadm version; then
+      return 1
+    fi
+  done
+
+  log_info "Pre-pulling control-plane images on all control-plane nodes"
+  for node in "${nodes[@]}"; do
+    if ! upgrade_step "Could not pull control-plane images on '${node}'" \
+      docker exec "$node" kubeadm config images pull --kubernetes-version "$target_version"; then
+      return 1
+    fi
+  done
+
+  log_info "Upgrading the first control-plane node '${first_cp}'"
+  if ! upgrade_step "Could not plan the upgrade on '${first_cp}'" \
+    docker exec "$first_cp" kubeadm upgrade plan; then
+    return 1
+  fi
+  if ! upgrade_step "Could not apply the upgrade on '${first_cp}'" \
+    docker exec "$first_cp" kubeadm upgrade apply -y "$target_version" \
+      --ignore-preflight-errors=SystemVerification; then
+    return 1
+  fi
+  if ! upgrade_install_binary "$tmpdir" "$first_cp" kubelet; then
+    return 1
+  fi
+  if ! upgrade_install_binary "$tmpdir" "$first_cp" kubectl; then
+    return 1
+  fi
+  if ! upgrade_step "Could not restart kubelet on '${first_cp}'" \
+    docker exec "$first_cp" sh -c 'systemctl daemon-reload && systemctl restart kubelet'; then
+    return 1
+  fi
+  upgrade_wait_for_node "$context" "$first_cp" "$target_version"
+
+  for node in "${nodes[@]:1}"; do
+    log_info "Upgrading control-plane node '${node}'"
+    if ! upgrade_step "Could not upgrade control-plane node '${node}'" \
+      docker exec "$node" kubeadm upgrade node --ignore-preflight-errors=SystemVerification; then
+      return 1
+    fi
+    if ! upgrade_install_binary "$tmpdir" "$node" kubelet; then
+      return 1
+    fi
+    if ! upgrade_install_binary "$tmpdir" "$node" kubectl; then
+      return 1
+    fi
+    if ! upgrade_step "Could not restart kubelet on '${node}'" \
+      docker exec "$node" sh -c 'systemctl daemon-reload && systemctl restart kubelet'; then
+      return 1
+    fi
+    upgrade_wait_for_node "$context" "$node" "$target_version"
+  done
+
+  for node in "${workers[@]}"; do
+    log_info "Upgrading worker node '${node}'"
+    if (( ${#workers[@]} > 1 )); then
+      if ! upgrade_step "Could not drain worker node '${node}'" \
+        kubectl --context "$context" drain "$node" --ignore-daemonsets --delete-emptydir-data; then
+        return 1
+      fi
+    else
+      log_warning "Single worker: not draining '${node}'; kubelet restart keeps pod containers running"
+    fi
+
+    if ! upgrade_install_binary "$tmpdir" "$node" kubeadm; then
+      return 1
+    fi
+    if ! upgrade_step "Could not upgrade worker node '${node}'" \
+      docker exec "$node" kubeadm upgrade node --ignore-preflight-errors=SystemVerification; then
+      return 1
+    fi
+    if ! upgrade_install_binary "$tmpdir" "$node" kubelet; then
+      return 1
+    fi
+    if ! upgrade_install_binary "$tmpdir" "$node" kubectl; then
+      return 1
+    fi
+    if ! upgrade_step "Could not restart kubelet on '${node}'" \
+      docker exec "$node" sh -c 'systemctl daemon-reload && systemctl restart kubelet'; then
+      return 1
+    fi
+
+    if (( ${#workers[@]} > 1 )); then
+      if ! upgrade_step "Could not uncordon worker node '${node}'" \
+        kubectl --context "$context" uncordon "$node"; then
+        return 1
+      fi
+    fi
+    upgrade_wait_for_node "$context" "$node" "$target_version"
+  done
+
+  log_info "Waiting for all nodes to be Ready"
+  if ! upgrade_step "Kubernetes nodes did not become Ready after the upgrade" \
+    kubectl --context "$context" wait --for=condition=Ready nodes --all --timeout=300s; then
+    return 1
+  fi
+
+  if kubectl --context "$context" -n kube-system get daemonset kube-proxy >/dev/null 2>&1; then
+    if ! upgrade_step "kube-proxy did not finish rolling out" \
+      kubectl --context "$context" -n kube-system rollout status daemonset/kube-proxy --timeout=300s; then
+      return 1
+    fi
+  fi
+  if kubectl --context "$context" -n kube-system get daemonset calico-node >/dev/null 2>&1; then
+    if ! upgrade_step "calico-node did not finish rolling out" \
+      kubectl --context "$context" -n kube-system rollout status daemonset/calico-node --timeout=300s; then
+      return 1
+    fi
+  fi
+
+  rm -rf "$tmpdir"
+
+  log_info "Cluster '${cluster_name}' upgraded to ${target_version}"
+  kubectl --context "$context" get nodes -o wide
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  upgrade_cluster
+fi

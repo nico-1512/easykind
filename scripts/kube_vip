@@ -45,6 +45,7 @@ install_kube_vip () {
     return 1
   fi
   kv_version="${KUBE_VIP_VERSION:-$kv_version}"
+  kv_version=$(request_version "Enter the kube-vip version" "${kv_version}")
 
   if default_range="$(default_load_balancer_range)"; then
     read -p "LoadBalancer IP range [${default_range}]: " range_input

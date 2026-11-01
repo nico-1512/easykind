@@ -25,6 +25,18 @@ log_error() {
         "$(timestamp)" "$*" >&2
 }
 
+# Request a version, using the provided default when the user presses Enter
+# @1 Prompt message
+# @2 Default version
+request_version() {
+  local prompt="$1"
+  local default_version="$2"
+  local input_value=""
+
+  read -p "${prompt} [${default_version}]: " input_value
+  printf '%s' "${input_value:-$default_version}"
+}
+
 # Request user input with validation
 # @1 Prompt message
 request_user_input() {

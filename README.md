@@ -49,13 +49,14 @@ main
 The menu walks you through:
 1. **Install binaries** - Docker, kind, kubectl, helm, adds `alias k='kubectl'` to `~/.bashrc`
 2. **Create cluster** - Prompts for cluster name and Kubernetes (`kindest/node`) version, uses a Kind config, optional `--retain` for failed nodes
-3. **Install Calico** - Prompts for cluster name and installs Calico. The kind config must disable the default CNI and use the Calico pod subnet
-4. **Install kube-vip** - Prompts for cluster name, auto-detects LoadBalancer range from Docker `kind` network (or asks), deploys kube-vip cloud controller, ConfigMap, RBAC, and DaemonSet on `eth0`
-5. **Install Envoy Gateway** - Installs Envoy Gateway via Helm and creates the `eg` GatewayClass. A `Gateway` gets a kube-vip LoadBalancer address when created
-6. **Install etcdctl/etcdutl** - Copies `etcdctl` and `etcdutl` into the control-plane nodes
-7. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
-8. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
-9. **Exit**
+3. **Install Calico** - Prompts for cluster name and Calico version (Enter uses the latest release), then installs Calico. The kind config must disable the default CNI and use the Calico pod subnet
+4. **Install kube-vip** - Prompts for cluster name and kube-vip version (Enter uses the latest release), auto-detects LoadBalancer range from Docker `kind` network (or asks), deploys kube-vip cloud controller, ConfigMap, RBAC, and DaemonSet on `eth0`
+5. **Install Envoy Gateway** - Prompts for cluster name and Envoy Gateway version (Enter uses the latest release), installs it via Helm, and creates the `eg` GatewayClass. A `Gateway` gets a kube-vip LoadBalancer address when created
+6. **Install etcdctl/etcdutl** - Prompts for cluster name and etcd version (Enter uses the latest release), then copies `etcdctl` and `etcdutl` into the control-plane nodes
+7. **Upgrade cluster** - Prompts for cluster name and target Kubernetes version (Enter uses the latest patch of the next minor), then upgrades the control-plane and worker nodes in place
+8. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
+9. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
+10. **Exit**
 
 ## Configuration
 
@@ -70,26 +71,33 @@ The included `assets/config-cluster.yaml` creates 3 control-plane nodes and 1 wo
 The Kubernetes version is prompted at creation time and passed as `--image kindest/node:<version>`. Press Enter to use the default (`v1.37.0`, the kind `v0.33.0` default) or set `KIND_KUBERNETES_VERSION` to override the default.
 
 ### Calico
-- Version: pulled from GitHub latest release, or set `CALICO_VERSION` (for example `v3.33.0`) to override
+- Version: prompted at install time. Press Enter to use the latest GitHub release, or type a version (for example `v3.33.0`). Set `CALICO_VERSION` to change the default shown in the prompt
 - Pod CIDR: Calico uses its default `192.168.0.0/16`; the kind config must set the same `podSubnet`
 - Requires the cluster to be created with `networking.disableDefaultCNI: true`
 
 ### kube-vip
-- Version: pulled from GitHub latest release, or set `KUBE_VIP_VERSION` to override
+- Version: prompted at install time. Press Enter to use the latest GitHub release, or type a version. Set `KUBE_VIP_VERSION` to change the default shown in the prompt
 - LoadBalancer range: inferred from `docker network inspect kind`. For `/16` uses `.100.10-.100.30`, for `/24` uses `.100-.130`. Otherwise prompts interactively
 - Interface: hardcoded to `eth0`
 - Context: uses `kind-<cluster_name>`
 
 ### Envoy Gateway
-- Version: pulled from GitHub latest release, or set `ENVOY_GATEWAY_VERSION` (for example `v1.9.3`) to override
+- Version: prompted at install time. Press Enter to use the latest GitHub release, or type a version (for example `v1.9.3`). Set `ENVOY_GATEWAY_VERSION` to change the default shown in the prompt
 - Helm release: `eg` in namespace `envoy-gateway-system`
 - Creates `GatewayClass` `eg`; create `Gateway` and `HTTPRoute` resources to expose workloads
 - Install after kube-vip if the `Gateway` should receive a LoadBalancer address
 
+### Upgrade
+- Target: prompted at upgrade time. Press Enter to use the latest patch of the next Kubernetes minor (from `dl.k8s.io/release/stable-1.<next>.txt`), or type a version. Set `KIND_KUBERNETES_UPGRADE_VERSION` to change the default shown in the prompt
+- Upgrades one minor at a time; same-minor patch upgrades are allowed, downgrades and skipped minors are rejected
+- Copies the target `kubeadm`, `kubelet` and `kubectl` binaries into the kind nodes, verifies their SHA-256 checksums, then upgrades the first control-plane node, remaining control-plane nodes, and workers in order
+- Passes `--ignore-preflight-errors=SystemVerification` because kind node containers cannot load the host kernel's `configs` module
+- With a single worker, the worker is not drained (both replicas of a workload would have nowhere to go); kubelet is restarted so containers keep running. With multiple workers, workers are drained and uncordoned one at a time
+
 ## Development
 
 Scripts are modular and can be run directly or sourced:
-- Shared helpers: `scripts/common` (`log_info/warn/error`, `request_user_input`, timestamps)
+- Shared helpers: `scripts/common` (`log_info/warn/error`, `request_user_input`, `request_version`, timestamps)
 - Follow `script_template` for new scripts (source `common`, define a function, guard with `BASH_SOURCE[0] == "$0"` to run when executed directly)
 - All scripts use `set -euo pipefail`
 
@@ -100,6 +108,8 @@ Run from repo root for dev:
 ./scripts/install_calico
 ./scripts/kube_vip
 ./scripts/install_envoy_gateway
+./scripts/install_etcdctl
+./scripts/upgrade_cluster
 ./scripts/delete_cluster
 ./scripts/cleanup
 ```
@@ -112,6 +122,8 @@ Run from repo root for dev:
 - **Calico refuses to install**: The cluster still has kindnet. Recreate the cluster with `networking.disableDefaultCNI: true` and `podSubnet: "192.168.0.0/16"` before running `install_calico`.
 - **kube-vip range wrong / network not found**: Ensure Docker is running and the `kind` network exists (`docker network inspect kind`). If not using default Kind subnet, you'll be prompted to enter a range manually.
 - **Envoy Gateway Gateway has no address**: Install kube-vip first, or check that the `Gateway` service received a LoadBalancer IP.
+- **Upgrade preflight fails with `SystemVerification`**: Kind node containers cannot load the host kernel's `configs` module. The upgrade script passes `--ignore-preflight-errors=SystemVerification`; other preflight checks still run.
+- **Upgrade has no default target**: The cluster is already on the newest stable minor, so there is no next minor to upgrade to yet. Enter an existing target version manually or use a cluster on an older minor.
 - **Go PATH**: If `kind` isn't found after install, ensure `$(go env GOPATH)/bin` is in your PATH (bootstrap adds it to `~/.bashrc`).
 - **Legacy conflict**: `bootstrap.sh` removes `/usr/local/bin/install` if it exists.
 
