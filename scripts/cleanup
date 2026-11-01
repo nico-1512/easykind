@@ -10,6 +10,7 @@ EASYKIND_SCRIPTS=(
   install_calico
   kube_vip
   install_envoy_gateway
+  install_argocd
   install_etcdctl
   upgrade_cluster
   delete_cluster

@@ -9,6 +9,7 @@ source "$SCRIPT_DIR/create_cluster"
 source "$SCRIPT_DIR/install_calico"
 source "$SCRIPT_DIR/kube_vip"
 source "$SCRIPT_DIR/install_envoy_gateway"
+source "$SCRIPT_DIR/install_argocd"
 source "$SCRIPT_DIR/install_etcdctl"
 source "$SCRIPT_DIR/upgrade_cluster"
 source "$SCRIPT_DIR/delete_cluster"
@@ -32,7 +33,8 @@ Run the scripts in this order:
   3. Install Calico
   4. Install kube-vip
   5. Install Envoy Gateway
-  6. Upgrade cluster"
+  6. Install Argo CD
+  7. Upgrade cluster"
 
 while true; do
   choice=$(gum choose --header "What do you want to do?" \
@@ -41,6 +43,7 @@ while true; do
     "Install Calico" \
     "Install kube-vip" \
     "Install Envoy Gateway" \
+    "Install Argo CD" \
     "Install etcdctl/etcdutl" \
     "Upgrade cluster" \
     "Delete cluster" \
@@ -62,6 +65,9 @@ while true; do
       ;;
     "Install Envoy Gateway")
       install_envoy_gateway || log_error "Envoy Gateway installation failed"
+      ;;
+    "Install Argo CD")
+      install_argocd || log_error "Argo CD installation failed"
       ;;
     "Install etcdctl/etcdutl")
       install_etcdutl || log_error "etcdctl/etcdutl installation failed"

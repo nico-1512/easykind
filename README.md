@@ -1,6 +1,6 @@
 # EasyKind
 
-A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux, install common CLI tools, install [Calico](https://www.tigera.io/project-calico/) as the CNI, optionally set up [kube-vip](https://kube-vip.io/) as a LoadBalancer, and optionally install [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API routes.
+A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux, install common CLI tools, install [Calico](https://www.tigera.io/project-calico/) as the CNI, optionally set up [kube-vip](https://kube-vip.io/) as a LoadBalancer, optionally install [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API routes, and optionally install [Argo CD](https://argo-cd.readthedocs.io/) for GitOps.
 
 ## What it installs
 
@@ -13,6 +13,7 @@ A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/
 - [Calico](https://www.tigera.io/project-calico/) as a policy-capable CNI (required by the included cluster config)
 - Optional: [kube-vip](https://kube-vip.io/) for LoadBalancer services
 - Optional: [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API (`GatewayClass`, `Gateway`, `HTTPRoute`)
+- Optional: [Argo CD](https://argo-cd.readthedocs.io/) for GitOps continuous delivery
 
 ## Prerequisites
 
@@ -52,11 +53,12 @@ The menu walks you through:
 3. **Install Calico** - Prompts for cluster name and Calico version (Enter uses the latest release), then installs Calico. The kind config must disable the default CNI and use the Calico pod subnet
 4. **Install kube-vip** - Prompts for cluster name and kube-vip version (Enter uses the latest release), auto-detects LoadBalancer range from Docker `kind` network (or asks), deploys kube-vip cloud controller, ConfigMap, RBAC, and DaemonSet on `eth0`
 5. **Install Envoy Gateway** - Prompts for cluster name and Envoy Gateway version (Enter uses the latest release), installs it via Helm, and creates the `eg` GatewayClass. A `Gateway` gets a kube-vip LoadBalancer address when created
-6. **Install etcdctl/etcdutl** - Prompts for cluster name and etcd version (Enter uses the latest release), then copies `etcdctl` and `etcdutl` into the control-plane nodes
-7. **Upgrade cluster** - Prompts for cluster name and target Kubernetes version (Enter uses the latest patch of the next minor), then upgrades the control-plane and worker nodes in place
-8. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
-9. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
-10. **Exit**
+6. **Install Argo CD** - Prompts for cluster name and Argo CD version (Enter uses the latest release), applies the upstream install manifest, and waits for the Argo CD components to become ready
+7. **Install etcdctl/etcdutl** - Prompts for cluster name and etcd version (Enter uses the latest release), then copies `etcdctl` and `etcdutl` into the control-plane nodes
+8. **Upgrade cluster** - Prompts for cluster name and target Kubernetes version (Enter uses the latest patch of the next minor), then upgrades the control-plane and worker nodes in place
+9. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
+10. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
+11. **Exit**
 
 ## Configuration
 
@@ -87,6 +89,14 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 - Creates `GatewayClass` `eg`; create `Gateway` and `HTTPRoute` resources to expose workloads
 - Install after kube-vip if the `Gateway` should receive a LoadBalancer address
 
+### Argo CD
+- Version: prompted at install time. Press Enter to use the latest GitHub release, or type a version (for example `v3.5.6`). Set `ARGOCD_VERSION` to change the default shown in the prompt
+- Namespace: `argocd`
+- Installs the upstream `manifests/install.yaml` for the selected release and waits for the Argo CD deployments and application controller
+- Access the UI with `kubectl --context kind-<cluster_name> -n argocd port-forward svc/argocd-server 8080:443`, then open `https://localhost:8080`
+- Get the initial admin password with `kubectl --context kind-<cluster_name> -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`
+- Install after Calico; kube-vip and Envoy Gateway are not required
+
 ### Upgrade
 - Target: prompted at upgrade time. Press Enter to use the latest patch of the next Kubernetes minor (from `dl.k8s.io/release/stable-1.<next>.txt`), or type a version. Set `KIND_KUBERNETES_UPGRADE_VERSION` to change the default shown in the prompt
 - Upgrades one minor at a time; same-minor patch upgrades are allowed, downgrades and skipped minors are rejected
@@ -108,6 +118,7 @@ Run from repo root for dev:
 ./scripts/install_calico
 ./scripts/kube_vip
 ./scripts/install_envoy_gateway
+./scripts/install_argocd
 ./scripts/install_etcdctl
 ./scripts/upgrade_cluster
 ./scripts/delete_cluster
@@ -122,6 +133,7 @@ Run from repo root for dev:
 - **Calico refuses to install**: The cluster still has kindnet. Recreate the cluster with `networking.disableDefaultCNI: true` and `podSubnet: "192.168.0.0/16"` before running `install_calico`.
 - **kube-vip range wrong / network not found**: Ensure Docker is running and the `kind` network exists (`docker network inspect kind`). If not using default Kind subnet, you'll be prompted to enter a range manually.
 - **Envoy Gateway Gateway has no address**: Install kube-vip first, or check that the `Gateway` service received a LoadBalancer IP.
+- **Argo CD UI is not reachable**: `argocd-server` is a ClusterIP Service. Use the printed `kubectl port-forward` command or expose it with your own Ingress/LoadBalancer.
 - **Upgrade preflight fails with `SystemVerification`**: Kind node containers cannot load the host kernel's `configs` module. The upgrade script passes `--ignore-preflight-errors=SystemVerification`; other preflight checks still run.
 - **Upgrade has no default target**: The cluster is already on the newest stable minor, so there is no next minor to upgrade to yet. Enter an existing target version manually or use a cluster on an older minor.
 - **Go PATH**: If `kind` isn't found after install, ensure `$(go env GOPATH)/bin` is in your PATH (bootstrap adds it to `~/.bashrc`).
