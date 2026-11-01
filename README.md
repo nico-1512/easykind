@@ -94,7 +94,8 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 - Version: prompted at install time. Press Enter to use the latest GitHub release, or type a version (for example `v3.5.6`). Set `ARGOCD_VERSION` to change the default shown in the prompt
 - Namespace: `argocd`
 - Installs the upstream `manifests/install.yaml` for the selected release with `kubectl apply --server-side`, which avoids the CRD annotation size limit, and waits for the Argo CD deployments and application controller
-- Access the UI with `kubectl --context kind-<cluster_name> -n argocd port-forward svc/argocd-server 8080:443`, then open `https://localhost:8080`
+- For a remote UI endpoint, use the `gitops/platform/argocd-ui` Gateway API resources in the Kiratech challenge repository; once applied, browse to the Gateway address on HTTP port 80. This endpoint requires a trusted HTTPS listener before public use
+- The port-forward remains available for private access: `kubectl --context kind-<cluster_name> -n argocd port-forward svc/argocd-server 8080:443`, then open `https://localhost:8080`
 - Get the initial admin password with `kubectl --context kind-<cluster_name> -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`
 - Install after Calico; kube-vip and Envoy Gateway are not required
 
