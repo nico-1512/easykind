@@ -10,6 +10,7 @@ source "$SCRIPT_DIR/install_calico"
 source "$SCRIPT_DIR/kube_vip"
 source "$SCRIPT_DIR/install_envoy_gateway"
 source "$SCRIPT_DIR/install_argocd"
+source "$SCRIPT_DIR/configure_gitops"
 source "$SCRIPT_DIR/install_etcdctl"
 source "$SCRIPT_DIR/upgrade_cluster"
 source "$SCRIPT_DIR/delete_cluster"
@@ -34,7 +35,8 @@ Run the scripts in this order:
   4. Install kube-vip
   5. Install Envoy Gateway
   6. Install Argo CD
-  7. Upgrade cluster"
+  7. Configure GitOps
+  8. Upgrade cluster"
 
 while true; do
   choice=$(gum choose --header "What do you want to do?" \
@@ -44,6 +46,7 @@ while true; do
     "Install kube-vip" \
     "Install Envoy Gateway" \
     "Install Argo CD" \
+    "Configure GitOps" \
     "Install etcdctl/etcdutl" \
     "Upgrade cluster" \
     "Delete cluster" \
@@ -68,6 +71,9 @@ while true; do
       ;;
     "Install Argo CD")
       install_argocd || log_error "Argo CD installation failed"
+      ;;
+    "Configure GitOps")
+      configure_gitops || log_error "GitOps configuration failed"
       ;;
     "Install etcdctl/etcdutl")
       install_etcdutl || log_error "etcdctl/etcdutl installation failed"

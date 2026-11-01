@@ -1,6 +1,6 @@
 # EasyKind
 
-A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux, install common CLI tools, install [Calico](https://www.tigera.io/project-calico/) as the CNI, optionally set up [kube-vip](https://kube-vip.io/) as a LoadBalancer, optionally install [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API routes, and optionally install [Argo CD](https://argo-cd.readthedocs.io/) for GitOps.
+A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux, install common CLI tools, install [Calico](https://www.tigera.io/project-calico/) as the CNI, optionally set up [kube-vip](https://kube-vip.io/) as a LoadBalancer, optionally install [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API routes, and optionally install [Argo CD](https://argo-cd.readthedocs.io/) and connect a GitOps repository.
 
 ## What it installs
 
@@ -54,11 +54,12 @@ The menu walks you through:
 4. **Install kube-vip** - Prompts for cluster name and kube-vip version (Enter uses the latest release), auto-detects LoadBalancer range from Docker `kind` network (or asks), deploys kube-vip cloud controller, ConfigMap, RBAC, and DaemonSet on `eth0`
 5. **Install Envoy Gateway** - Prompts for cluster name and Envoy Gateway version (Enter uses the latest release), installs it via Helm, and creates the `eg` GatewayClass. A `Gateway` gets a kube-vip LoadBalancer address when created
 6. **Install Argo CD** - Prompts for cluster name and Argo CD version (Enter uses the latest release), applies the upstream install manifest, and waits for the Argo CD components to become ready
-7. **Install etcdctl/etcdutl** - Prompts for cluster name and etcd version (Enter uses the latest release), then copies `etcdctl` and `etcdutl` into the control-plane nodes
-8. **Upgrade cluster** - Prompts for cluster name and target Kubernetes version (Enter uses the latest patch of the next minor), then upgrades the control-plane and worker nodes in place
-9. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
-10. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
-11. **Exit**
+7. **Configure GitOps** - Registers a public Git repository in Argo CD and creates Argo Applications for the selected Kubernetes resources
+8. **Install etcdctl/etcdutl** - Prompts for cluster name and etcd version (Enter uses the latest release), then copies `etcdctl` and `etcdutl` into the control-plane nodes
+9. **Upgrade cluster** - Prompts for cluster name and target Kubernetes version (Enter uses the latest patch of the next minor), then upgrades the control-plane and worker nodes in place
+10. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
+11. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
+12. **Exit**
 
 ## Configuration
 
@@ -97,6 +98,14 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 - Get the initial admin password with `kubectl --context kind-<cluster_name> -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`
 - Install after Calico; kube-vip and Envoy Gateway are not required
 
+### GitOps
+- Run after **Install Argo CD**. Registers the public Git repository as an Argo CD repository Secret and creates one Argo `Application` per selected component; select nothing to register the repository only
+- Enter a different URL at the prompt
+- Default branch: `main`; override with `GITOPS_REPO_BRANCH`
+- Applications use automated sync with `prune: false` and `selfHeal: true`, so existing objects are adopted and updated but not deleted
+- Does not manage Calico, kube-vip, Argo CD, node binaries, Kubernetes upgrades or etcd backup/restore; those remain in the bootstrap/manual scripts
+- Add new components to the arrays in `scripts/configure_gitops`; see `kiratech-challenge/gitops/README.md`
+
 ### Upgrade
 - Target: prompted at upgrade time. Press Enter to use the latest patch of the next Kubernetes minor (from `dl.k8s.io/release/stable-1.<next>.txt`), or type a version. Set `KIND_KUBERNETES_UPGRADE_VERSION` to change the default shown in the prompt
 - Upgrades one minor at a time; same-minor patch upgrades are allowed, downgrades and skipped minors are rejected
@@ -119,6 +128,7 @@ Run from repo root for dev:
 ./scripts/kube_vip
 ./scripts/install_envoy_gateway
 ./scripts/install_argocd
+./scripts/configure_gitops
 ./scripts/install_etcdctl
 ./scripts/upgrade_cluster
 ./scripts/delete_cluster
@@ -135,6 +145,7 @@ Run from repo root for dev:
 - **Envoy Gateway Gateway has no address**: Install kube-vip first, or check that the `Gateway` service received a LoadBalancer IP.
 - **Argo CD install fails with `metadata.annotations: Too long`**: the upstream CRDs exceed the client-side apply annotation limit. The script uses `kubectl apply --server-side --force-conflicts`; re-run the installation to finish a partially applied install.
 - **Argo CD UI is not reachable**: `argocd-server` is a ClusterIP Service. Use the printed `kubectl port-forward` command or expose it with your own Ingress/LoadBalancer.
+- **Argo CD cannot clone the GitOps repo**: the repository must be public or have credentials; verify the URL and branch, then check `kubectl -n argocd get applications` and the Application events.
 - **Upgrade preflight fails with `SystemVerification`**: Kind node containers cannot load the host kernel's `configs` module. The upgrade script passes `--ignore-preflight-errors=SystemVerification`; other preflight checks still run.
 - **Upgrade has no default target**: The cluster is already on the newest stable minor, so there is no next minor to upgrade to yet. Enter an existing target version manually or use a cluster on an older minor.
 - **Go PATH**: If `kind` isn't found after install, ensure `$(go env GOPATH)/bin` is in your PATH (bootstrap adds it to `~/.bashrc`).

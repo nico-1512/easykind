@@ -1,0 +1,129 @@
+#!/bin/bash
+set -euo pipefail
+
+source_common () {
+  source "$(dirname "${BASH_SOURCE[0]}")/common"
+}
+
+configure_gitops () {
+  local cluster_name context repo_url branch repo_name selected
+  local app_name app_label app_path app_namespace
+  local i
+
+  local -a component_labels=(
+    "restore-demo: etcd restore demo (Namespace, ConfigMap, Deployment, Service)"
+    "nginx-probe: nginx Deployment, Service, PDB and continuous probe"
+  )
+  local -a component_names=(restore-demo nginx-probe)
+  local -a component_paths=(
+    gitops/apps/restore-demo
+    gitops/apps/nginx-probe
+  )
+  local -a component_namespaces=(restore-demo default)
+
+  if ! command -v gum >/dev/null 2>&1; then
+    log_error "gum is required but not installed. Run bootstrap.sh first."
+    return 1
+  fi
+
+  cluster_name=$(request_user_input "Enter the kind cluster name: ")
+
+  if ! kind get clusters 2>/dev/null | grep -qx "$cluster_name"; then
+    log_error "Kind cluster '${cluster_name}' not found"
+    return 1
+  fi
+
+  context="kind-${cluster_name}"
+
+  if ! kubectl --context "$context" -n argocd get deployment argocd-server >/dev/null 2>&1; then
+    log_error "Argo CD is not installed in cluster '${cluster_name}'. Run 'Install Argo CD' first."
+    return 1
+  fi
+
+  repo_url="${GITOPS_REPO_URL:-https://github.com/nico-1512/kiratech-challenge.git}"
+  read -p "Public Git repository URL [${repo_url}]: " repo_input
+  repo_url="${repo_input:-$repo_url}"
+  repo_url="${repo_url%/}"
+
+  branch="${GITOPS_REPO_BRANCH:-main}"
+  read -p "Git branch [${branch}]: " branch_input
+  branch="${branch_input:-$branch}"
+
+  repo_name="repo-$(basename "$repo_url" .git)"
+  log_info "Registering Git repository '${repo_url}' in Argo CD"
+
+  if ! kubectl --context "$context" -n argocd apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${repo_name}
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: "${repo_url}"
+EOF
+  then
+    log_error "Could not register the Git repository in Argo CD"
+    return 1
+  fi
+
+  selected="$(gum choose --no-limit \
+    --header "Select resources to manage in Argo CD (space selects, enter confirms; none = repo only)" \
+    "${component_labels[@]}" || true)"
+
+  if [[ -z "$selected" ]]; then
+    log_info "Repository registered; no applications selected"
+    return 0
+  fi
+
+  for i in "${!component_names[@]}"; do
+    app_label="${component_labels[$i]}"
+    if ! grep -Fxq "$app_label" <<< "$selected"; then
+      continue
+    fi
+
+    app_name="${component_names[$i]}"
+    app_path="${component_paths[$i]}"
+    app_namespace="${component_namespaces[$i]}"
+
+    log_info "Creating/updating Argo Application '${app_name}' (${app_path})"
+    if ! kubectl --context "$context" -n argocd apply -f - <<EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${app_name}
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: "${repo_url}"
+    targetRevision: "${branch}"
+    path: "${app_path}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ${app_namespace}
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+EOF
+    then
+      log_error "Could not create Argo Application '${app_name}'"
+      return 1
+    fi
+  done
+
+  log_info "GitOps configured in cluster '${cluster_name}'"
+  log_info "Automated sync is enabled with prune=false, so Argo updates existing objects but does not delete them"
+  log_info "Inspect applications with: kubectl --context ${context} -n argocd get applications"
+  log_info "Open the UI with: kubectl --context ${context} -n argocd port-forward svc/argocd-server 8080:443"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  source_common
+  configure_gitops
+fi
