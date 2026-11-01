@@ -40,6 +40,11 @@ configure_gitops () {
     return 1
   fi
 
+  log_info "Use Argo CD for workloads and post-bootstrap add-ons."
+  log_info "Currently selectable here: restore-demo and nginx-probe."
+  log_info "Add Envoy Gateway, Gateway API routes and other Helm/Kustomize apps later as Argo Applications."
+  log_info "Keep kind, Calico, kube-vip bootstrap, Argo CD, etcd tools, upgrades and restore in EasyKind."
+
   repo_url="${GITOPS_REPO_URL:-https://github.com/nico-1512/kiratech-challenge.git}"
   read -p "Public Git repository URL [${repo_url}]: " repo_input
   repo_url="${repo_input:-$repo_url}"

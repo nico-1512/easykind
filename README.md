@@ -100,10 +100,12 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 
 ### GitOps
 - Run after **Install Argo CD**. Registers the public Git repository as an Argo CD repository Secret and creates one Argo `Application` per selected component; select nothing to register the repository only
-- Enter a different URL at the prompt
+- Default repository: `https://github.com/nico-1512/kiratech-challenge.git`; enter a different URL at the prompt or set `GITOPS_REPO_URL`
 - Default branch: `main`; override with `GITOPS_REPO_BRANCH`
+- Current components: `restore-demo` and `nginx-probe`
 - Applications use automated sync with `prune: false` and `selfHeal: true`, so existing objects are adopted and updated but not deleted
-- Does not manage Calico, kube-vip, Argo CD, node binaries, Kubernetes upgrades or etcd backup/restore; those remain in the bootstrap/manual scripts
+- Use Argo CD for workloads and post-bootstrap add-ons. Envoy Gateway, Gateway API routes and other Helm/Kustomize applications can be added later as Argo Applications
+- Does not manage Calico, kube-vip bootstrap, Argo CD itself, node binaries, Kubernetes upgrades or etcd backup/restore; those remain in the bootstrap/manual scripts
 - Add new components to the arrays in `scripts/configure_gitops`; see `kiratech-challenge/gitops/README.md`
 
 ### Upgrade

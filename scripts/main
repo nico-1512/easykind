@@ -28,7 +28,8 @@ fi
 gum style --foreground 212 --border double --padding "1 2" --margin "1" \
   "EasyKind
 
-Decide what to deploy with Argo CD and what to deploy manually with scripts.
+Run steps 1-7 once to bootstrap the cluster.
+After step 7, deploy workloads from the GitOps repo instead of this menu.
 
 Run the scripts in this order:
   1. Install binaries
