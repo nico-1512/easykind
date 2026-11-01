@@ -99,8 +99,11 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 - Install after Calico; kube-vip and Envoy Gateway are not required
 
 ### GitOps
-- Run after **Install Argo CD**. Registers the public Git repository as an Argo CD repository Secret and creates one Argo `Application` per selected component; select nothing to register the repository only
-- Default repository: `https://github.com/nico-1512/kiratech-challenge.git`; enter a different URL at the prompt or set `GITOPS_REPO_URL`
+- Run after **Install Argo CD**. Registers the Git repository as an Argo CD repository Secret and creates one Argo `Application` per selected component; select nothing to register the repository only
+- Repository URL: required at the prompt; there is no default. For automation, set `GITOPS_REPO_URL`
+- Authentication: public repository, private HTTPS with username + token, or private SSH with a private key
+- Private HTTPS (recommended for GitHub): create a fine-grained PAT with **Contents: Read-only** for that repo. Use your GitHub username (or `x-access-token`) and the PAT as the password
+- Private HTTPS stores `username` and `password` in the Argo CD repository Secret; private SSH stores `sshPrivateKey`. GitHub/GitLab SSH host keys are already trusted by Argo CD; add self-hosted host keys to `argocd-ssh-known-hosts-cm`
 - Default branch: `main`; override with `GITOPS_REPO_BRANCH`
 - Current components: `restore-demo` and `nginx-probe`
 - Applications use automated sync with `prune: false` and `selfHeal: true`, so existing objects are adopted and updated but not deleted

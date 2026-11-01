@@ -5,8 +5,51 @@ source_common () {
   source "$(dirname "${BASH_SOURCE[0]}")/common"
 }
 
+_gitops_base64 () {
+  printf '%s' "$1" | base64 | tr -d '\n'
+}
+
+apply_gitops_repository_secret () {
+  local context="$1"
+  local repo_name="$2"
+  local repo_url="$3"
+  local auth_type="$4"
+  local username="${5:-}"
+  local password="${6:-}"
+  local ssh_private_key="${7:-}"
+  local secret_data
+
+  secret_data="data:
+  type: $(_gitops_base64 git)
+  url: $(_gitops_base64 "$repo_url")"
+
+  case "$auth_type" in
+    https)
+      secret_data+="
+  username: $(_gitops_base64 "$username")
+  password: $(_gitops_base64 "$password")"
+      ;;
+    ssh)
+      secret_data+="
+  sshPrivateKey: $(_gitops_base64 "$ssh_private_key")"
+      ;;
+  esac
+
+  kubectl --context "$context" -n argocd apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${repo_name}
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+${secret_data}
+EOF
+}
+
 configure_gitops () {
-  local cluster_name context repo_url branch repo_name selected
+  local cluster_name context repo_url branch branch_input repo_name selected
+  local auth_method="" auth_type="" username="" password="" ssh_key_path="" ssh_private_key=""
   local app_name app_label app_path app_namespace
   local i
 
@@ -45,30 +88,63 @@ configure_gitops () {
   log_info "Add Envoy Gateway, Gateway API routes and other Helm/Kustomize apps later as Argo Applications."
   log_info "Keep kind, Calico, kube-vip bootstrap, Argo CD, etcd tools, upgrades and restore in EasyKind."
 
-  repo_url="${GITOPS_REPO_URL:-https://github.com/nico-1512/kiratech-challenge.git}"
-  read -p "Public Git repository URL [${repo_url}]: " repo_input
-  repo_url="${repo_input:-$repo_url}"
+  repo_url="${GITOPS_REPO_URL:-}"
+  if [[ -z "$repo_url" ]]; then
+    repo_url=$(request_user_input "Enter the Git repository URL: ")
+  else
+    log_info "Using Git repository URL from GITOPS_REPO_URL"
+  fi
   repo_url="${repo_url%/}"
 
   branch="${GITOPS_REPO_BRANCH:-main}"
   read -p "Git branch [${branch}]: " branch_input
   branch="${branch_input:-$branch}"
 
+  auth_method="$(gum choose --height 10 --header "Repository authentication" \
+    "Public repository (no credentials)" \
+    "Private HTTPS (username + token)" \
+    "Private SSH (private key)" || true)"
+
+  case "$auth_method" in
+    "Public repository (no credentials)")
+      auth_type="public"
+      ;;
+    "Private HTTPS (username + token)")
+      auth_type="https"
+      username=$(request_user_input "Git username: ")
+      while [[ -z "$password" ]]; do
+        read -rsp "Git token or password: " password
+        printf '\n'
+        if [[ -z "$password" ]]; then
+          log_error "Token or password cannot be empty"
+        fi
+      done
+      ;;
+    "Private SSH (private key)")
+      auth_type="ssh"
+      if [[ "$repo_url" != git@* && "$repo_url" != ssh://* ]]; then
+        log_warning "SSH authentication usually requires an SSH URL such as git@github.com:owner/repo.git"
+      fi
+      ssh_key_path=$(request_user_input "Path to SSH private key: ")
+      if [[ ! -r "$ssh_key_path" ]]; then
+        log_error "SSH private key '${ssh_key_path}' is not readable"
+        return 1
+      fi
+      ssh_private_key=$(<"$ssh_key_path")
+      log_info "For GitHub/GitLab, Argo CD already trusts the SSH host keys."
+      log_info "For a self-hosted Git server, add its host key to argocd-ssh-known-hosts-cm."
+      ;;
+    *)
+      log_info "No authentication method selected"
+      return 0
+      ;;
+  esac
+
   repo_name="repo-$(basename "$repo_url" .git)"
   log_info "Registering Git repository '${repo_url}' in Argo CD"
 
-  if ! kubectl --context "$context" -n argocd apply -f - <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ${repo_name}
-  namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repository
-stringData:
-  type: git
-  url: "${repo_url}"
-EOF
+  if ! apply_gitops_repository_secret "$context" "$repo_name" "$repo_url" \
+    "$auth_type" "$username" "$password" "$ssh_private_key"
   then
     log_error "Could not register the Git repository in Argo CD"
     return 1
