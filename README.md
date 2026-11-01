@@ -92,7 +92,7 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 ### Argo CD
 - Version: prompted at install time. Press Enter to use the latest GitHub release, or type a version (for example `v3.5.6`). Set `ARGOCD_VERSION` to change the default shown in the prompt
 - Namespace: `argocd`
-- Installs the upstream `manifests/install.yaml` for the selected release and waits for the Argo CD deployments and application controller
+- Installs the upstream `manifests/install.yaml` for the selected release with `kubectl apply --server-side`, which avoids the CRD annotation size limit, and waits for the Argo CD deployments and application controller
 - Access the UI with `kubectl --context kind-<cluster_name> -n argocd port-forward svc/argocd-server 8080:443`, then open `https://localhost:8080`
 - Get the initial admin password with `kubectl --context kind-<cluster_name> -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`
 - Install after Calico; kube-vip and Envoy Gateway are not required
@@ -133,6 +133,7 @@ Run from repo root for dev:
 - **Calico refuses to install**: The cluster still has kindnet. Recreate the cluster with `networking.disableDefaultCNI: true` and `podSubnet: "192.168.0.0/16"` before running `install_calico`.
 - **kube-vip range wrong / network not found**: Ensure Docker is running and the `kind` network exists (`docker network inspect kind`). If not using default Kind subnet, you'll be prompted to enter a range manually.
 - **Envoy Gateway Gateway has no address**: Install kube-vip first, or check that the `Gateway` service received a LoadBalancer IP.
+- **Argo CD install fails with `metadata.annotations: Too long`**: the upstream CRDs exceed the client-side apply annotation limit. The script uses `kubectl apply --server-side --force-conflicts`; re-run the installation to finish a partially applied install.
 - **Argo CD UI is not reachable**: `argocd-server` is a ClusterIP Service. Use the printed `kubectl port-forward` command or expose it with your own Ingress/LoadBalancer.
 - **Upgrade preflight fails with `SystemVerification`**: Kind node containers cannot load the host kernel's `configs` module. The upgrade script passes `--ignore-preflight-errors=SystemVerification`; other preflight checks still run.
 - **Upgrade has no default target**: The cluster is already on the newest stable minor, so there is no next minor to upgrade to yet. Enter an existing target version manually or use a cluster on an older minor.
