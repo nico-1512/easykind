@@ -1,6 +1,6 @@
 # EasyKind
 
-A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux, install common CLI tools, install [Calico](https://www.tigera.io/project-calico/) as the CNI, optionally set up [kube-vip](https://kube-vip.io/) as a LoadBalancer, optionally install [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API routes, and optionally install [Argo CD](https://argo-cd.readthedocs.io/) and connect a GitOps repository.
+A simple set of Bash scripts to create and operate a [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux. EasyKind installs the host tools, creates the cluster, bootstraps Calico and kube-vip, and can install Envoy Gateway directly or connect Argo CD to a GitOps repository. Choose either the EasyKind script or Argo CD to manage a component.
 
 ## What it installs
 
@@ -12,7 +12,7 @@ A simple set of Bash scripts to spin up a local [Kind](https://kind.sigs.k8s.io/
 - Go (if missing) and inotify limits tuned for Kind
 - [Calico](https://www.tigera.io/project-calico/) as a policy-capable CNI (required by the included cluster config)
 - Optional: [kube-vip](https://kube-vip.io/) for LoadBalancer services
-- Optional: [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API (`GatewayClass`, `Gateway`, `HTTPRoute`)
+- Optional: [Envoy Gateway](https://gateway.envoyproxy.io/) for Gateway API, installed by EasyKind or declared in GitOps
 - Optional: [Argo CD](https://argo-cd.readthedocs.io/) for GitOps continuous delivery
 
 ## Prerequisites
@@ -51,10 +51,10 @@ The menu walks you through:
 1. **Install binaries** - Docker, kind, kubectl, helm, adds `alias k='kubectl'` to `~/.bashrc`
 2. **Create cluster** - Prompts for cluster name and Kubernetes (`kindest/node`) version, uses a Kind config, optional `--retain` for failed nodes
 3. **Install Calico** - Prompts for cluster name and Calico version (Enter uses the latest release), then installs Calico. The kind config must disable the default CNI and use the Calico pod subnet
-4. **Install kube-vip** - Prompts for cluster name and kube-vip version (Enter uses the latest release), auto-detects LoadBalancer range from Docker `kind` network (or asks), deploys kube-vip cloud controller, ConfigMap, RBAC, and DaemonSet on `eth0`
-5. **Install Envoy Gateway** - Prompts for cluster name and Envoy Gateway version (Enter uses the latest release), installs it via Helm, and creates the `eg` GatewayClass. A `Gateway` gets a kube-vip LoadBalancer address when created
-6. **Install Argo CD** - Prompts for cluster name and Argo CD version (Enter uses the latest release), applies the upstream install manifest, and waits for the Argo CD components to become ready
-7. **Configure GitOps** - Registers a Git repository in Argo CD and asks which repository path to manage (Enter uses the repository root)
+4. **Install kube-vip** - Prompts for cluster name and kube-vip version, auto-detects the LoadBalancer range from the Docker `kind` network (or asks), and bootstraps kube-vip for service LoadBalancer addresses
+5. **Install Envoy Gateway** - Installs Envoy Gateway and GatewayClass `eg`. Alternatively, declare the chart and GatewayClass in Git and let Argo CD manage them; do not use both methods for the same release
+6. **Install Argo CD** - Prompts for cluster name and Argo CD version (Enter uses the latest release), applies the upstream install manifest, and waits for Argo CD to become ready
+7. **Configure GitOps** - Registers a Git repository in Argo CD and asks which repository path to manage. Press Enter to use the repository root
 8. **Install etcdctl/etcdutl** - Prompts for cluster name and etcd version (Enter uses the latest release), then copies `etcdctl` and `etcdutl` into the control-plane nodes
 9. **Upgrade cluster** - Prompts for cluster name and target Kubernetes version (Enter uses the latest patch of the next minor), then upgrades the control-plane and worker nodes in place
 10. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
@@ -85,16 +85,15 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 - Context: uses `kind-<cluster_name>`
 
 ### Envoy Gateway
-- Version: prompted at install time. Press Enter to use the latest GitHub release, or type a version (for example `v1.9.3`). Set `ENVOY_GATEWAY_VERSION` to change the default shown in the prompt
-- Helm release: `eg` in namespace `envoy-gateway-system`
-- Creates `GatewayClass` `eg`; create `Gateway` and `HTTPRoute` resources to expose workloads
-- Install after kube-vip if the `Gateway` should receive a LoadBalancer address
+- Direct install: run **Install Envoy Gateway** from the EasyKind menu. It installs the `gateway-helm` OCI chart and creates GatewayClass `eg`.
+- GitOps install: add an Argo CD Application for the same chart and declare GatewayClass `eg` in the connected Git repository.
+- Choose one manager for the `eg` release and GatewayClass. Do not let EasyKind and Argo CD manage the same resources at once.
+- Add `Gateway`, `HTTPRoute` and related resources to Git when using GitOps. Install kube-vip first if a `Gateway` needs a `LoadBalancer` address.
 
 ### Argo CD
 - Version: prompted at install time. Press Enter to use the latest GitHub release, or type a version (for example `v3.5.6`). Set `ARGOCD_VERSION` to change the default shown in the prompt
 - Namespace: `argocd`
 - Installs the upstream `manifests/install.yaml` for the selected release with `kubectl apply --server-side`, which avoids the CRD annotation size limit, and waits for the Argo CD deployments and application controller
-- For a remote UI endpoint, use the `gitops/platform/argocd-ui` Gateway API resources in the Kiratech challenge repository; once applied, browse to the Gateway address on HTTP port 80. This endpoint requires a trusted HTTPS listener before public use
 - The port-forward remains available for private access: `kubectl --context kind-<cluster_name> -n argocd port-forward svc/argocd-server 8080:443`, then open `https://localhost:8080`
 - Get the initial admin password with `kubectl --context kind-<cluster_name> -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`
 - Install after Calico; kube-vip and Envoy Gateway are not required
@@ -102,16 +101,15 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 ### GitOps
 - Run after **Install Argo CD**. Registers the Git repository as an Argo CD repository Secret and creates one Argo `Application` for the path you choose
 - Repository URL: required at the prompt; there is no default. For automation, set `GITOPS_REPO_URL`
-- Repository path: prompted at setup; press Enter to use the repository root (`.`), or set `GITOPS_REPO_PATH`. Paths are relative to the repository root
+- Repository path: prompted at setup; press Enter for the repository root (`.`), or set `GITOPS_REPO_PATH`. Paths are relative to the repository root
 - Application name: derived from the repository name and path basename; destination namespace defaults to `default`
 - Authentication: public repository, private HTTPS with username + token, or private SSH with a private key
 - Private HTTPS (recommended for GitHub): create a fine-grained PAT with **Contents: Read-only** for that repo. Use your GitHub username (or `x-access-token`) and the PAT as the password
 - Private HTTPS stores `username` and `password` in the Argo CD repository Secret; private SSH stores `sshPrivateKey`. GitHub/GitLab SSH host keys are already trusted by Argo CD; add self-hosted host keys to `argocd-ssh-known-hosts-cm`
 - Default branch: `main`; override with `GITOPS_REPO_BRANCH`
 - The Application uses automated sync with `prune: false` and `selfHeal: true`, so existing objects are adopted and updated but not deleted
-- Use Argo CD for workloads and post-bootstrap add-ons. Envoy Gateway, Gateway API routes and other Helm/Kustomize applications can be added later as Argo Applications
-- Does not manage Calico, kube-vip bootstrap, Argo CD itself, node binaries, Kubernetes upgrades or etcd backup/restore; those remain in the bootstrap/manual scripts
-- See `kiratech-challenge/gitops/README.md` for repository layout and platform add-ons
+- Argo CD manages the workloads and platform add-ons declared in the connected GitOps repository. Envoy Gateway can instead be installed by EasyKind; do not configure both for the same release
+- EasyKind keeps cluster creation, Calico, kube-vip bootstrap, the initial Argo CD installation, node tools, Kubernetes upgrades and etcd backup/restore
 
 ### Upgrade
 - Target: prompted at upgrade time. Press Enter to use the latest patch of the next Kubernetes minor (from `dl.k8s.io/release/stable-1.<next>.txt`), or type a version. Set `KIND_KUBERNETES_UPGRADE_VERSION` to change the default shown in the prompt
@@ -149,7 +147,7 @@ Run from repo root for dev:
 - **Cluster config missing**: Set `KIND_CLUSTER_CONFIG=/path/to/config.yaml` or copy a config to `assets/` before running.
 - **Calico refuses to install**: The cluster still has kindnet. Recreate the cluster with `networking.disableDefaultCNI: true` and `podSubnet: "192.168.0.0/16"` before running `install_calico`.
 - **kube-vip range wrong / network not found**: Ensure Docker is running and the `kind` network exists (`docker network inspect kind`). If not using default Kind subnet, you'll be prompted to enter a range manually.
-- **Envoy Gateway Gateway has no address**: Install kube-vip first, or check that the `Gateway` service received a LoadBalancer IP.
+- **Envoy Gateway is not ready**: Check the `envoy-gateway` Argo CD Application and its events. If a `Gateway` has no address, verify kube-vip and its configured LoadBalancer range.
 - **Argo CD install fails with `metadata.annotations: Too long`**: the upstream CRDs exceed the client-side apply annotation limit. The script uses `kubectl apply --server-side --force-conflicts`; re-run the installation to finish a partially applied install.
 - **Argo CD UI is not reachable**: `argocd-server` is a ClusterIP Service. Use the printed `kubectl port-forward` command or expose it with your own Ingress/LoadBalancer.
 - **Argo CD cannot clone the GitOps repo**: the repository must be public or have credentials; verify the URL and branch, then check `kubectl -n argocd get applications` and the Application events.

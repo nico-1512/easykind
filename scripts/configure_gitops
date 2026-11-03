@@ -71,9 +71,10 @@ configure_gitops () {
     return 1
   fi
 
-  log_info "Use Argo CD for workloads and post-bootstrap add-ons."
+  log_info "Envoy Gateway can be installed with the EasyKind script or declared in this GitOps repository. Use only one owner for a component."
+  log_info "Use Argo CD for workloads and post-bootstrap add-ons declared in Git."
   log_info "Choose the repository path Argo CD should manage; press Enter to use the repository root (.)."
-  log_info "Keep kind, Calico, kube-vip bootstrap, Argo CD, etcd tools, upgrades and restore in EasyKind."
+  log_info "Keep cluster creation, Calico bootstrap, kube-vip network setup, Argo CD bootstrap, etcd tools, upgrades and restore in EasyKind."
 
   repo_url="${GITOPS_REPO_URL:-}"
   if [[ -z "$repo_url" ]]; then

@@ -28,18 +28,19 @@ fi
 gum style --foreground 212 --border double --padding "1 2" --margin "1" \
   "EasyKind
 
-Run steps 1-7 once to bootstrap the cluster.
-After step 7, manage workloads from the GitOps repo instead of this menu.
+Run the cluster bootstrap steps first. Envoy Gateway can be installed here or managed from GitOps; use only one method for each component.
+Other platform add-ons can be managed from the GitOps repo.
 
 Run the scripts in this order:
   1. Install binaries
   2. Create cluster
   3. Install Calico
   4. Install kube-vip
-  5. Install Envoy Gateway
+  5. Install Envoy Gateway (optional; or configure it in GitOps)
   6. Install Argo CD
   7. Configure GitOps
-  8. Upgrade cluster"
+  8. Install etcdctl/etcdutl
+  9. Upgrade cluster"
 
 while true; do
   choice=$(gum choose --height 20 --header "What do you want to do?" \

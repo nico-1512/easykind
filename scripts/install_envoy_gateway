@@ -54,6 +54,7 @@ spec:
 EOF
 
   log_info "Envoy Gateway installed in cluster '${cluster_name}' (GatewayClass: eg)"
+  log_info "For declarative management, configure Argo CD to sync the same chart and GatewayClass from Git instead. Do not manage this release with both methods."
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
