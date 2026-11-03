@@ -1,6 +1,6 @@
 # EasyKind
 
-A simple set of Bash scripts to create and operate a [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux. EasyKind installs the host tools, creates the cluster, bootstraps Calico and kube-vip, and can install Envoy Gateway directly or connect Argo CD to a GitOps repository. Choose either the EasyKind script or Argo CD to manage a component.
+A simple set of Bash scripts to create and operate a [Kind](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker) cluster on Linux. EasyKind installs the host tools, creates the cluster, bootstraps Calico and kube-vip, and can install Envoy Gateway from the command line or connect Argo CD to a GitOps repository. Choose either EasyKind or Argo CD to manage a component.
 
 ## What it installs
 
@@ -52,14 +52,13 @@ The menu walks you through:
 2. **Create cluster** - Prompts for cluster name and lets you use the default Kind config, provide your own Kind `Cluster` YAML, or choose control-plane and worker counts. Then prompts for the Kubernetes (`kindest/node`) version and optional `--retain` for failed nodes
 3. **Install Calico** - Prompts for cluster name and Calico version (Enter uses the latest release), then installs Calico. The kind config must disable the default CNI and use the Calico pod subnet
 4. **Install kube-vip** - Prompts for cluster name and kube-vip version, auto-detects the LoadBalancer range from the Docker `kind` network (or asks), and bootstraps kube-vip for service LoadBalancer addresses
-5. **Install Envoy Gateway** - Installs Envoy Gateway and GatewayClass `eg`. Alternatively, declare the chart and GatewayClass in Git and let Argo CD manage them; do not use both methods for the same release
-6. **Install Argo CD** - Prompts for cluster name and Argo CD version (Enter uses the latest release), applies the upstream install manifest, and waits for Argo CD to become ready
-7. **Configure GitOps** - Registers a Git repository in Argo CD and asks which repository path to manage. Press Enter to use the repository root
-8. **Install etcdctl/etcdutl** - Prompts for cluster name and etcd version (Enter uses the latest release), then copies `etcdctl` and `etcdutl` into the control-plane nodes
-9. **Upgrade cluster** - Prompts for cluster name and target Kubernetes version (Enter uses the latest patch of the next minor), then upgrades the control-plane and worker nodes in place
-10. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
-11. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
-12. **Exit**
+5. **Install Argo CD** - Prompts for cluster name and Argo CD version (Enter uses the latest release), applies the upstream install manifest, and waits for Argo CD to become ready
+6. **Configure GitOps** - Registers a Git repository in Argo CD and asks which repository path to manage. Press Enter to use the repository root
+7. **Install etcdctl/etcdutl** - Prompts for cluster name and etcd version (Enter uses the latest release), then copies `etcdctl` and `etcdutl` into the control-plane nodes
+8. **Upgrade cluster** - Prompts for cluster name and target Kubernetes version (Enter uses the latest patch of the next minor), then upgrades the control-plane and worker nodes in place
+9. **Delete cluster** - Delete an existing cluster (with confirmation/retry)
+10. **Cleanup** - Remove EasyKind scripts from `/usr/local/bin` and assets from `/usr/local/share/easykind`
+11. **Exit**
 
 ## Configuration
 
@@ -86,10 +85,12 @@ The Kubernetes version is prompted at creation time and passed as `--image kinde
 - Context: uses `kind-<cluster_name>`
 
 ### Envoy Gateway
-- Direct install: run **Install Envoy Gateway** from the EasyKind menu. It installs the `gateway-helm` OCI chart and creates GatewayClass `eg`.
+- Direct install: run `main --install-envoy-gateway`. EasyKind prompts for the cluster name and version, installs the `gateway-helm` OCI chart, and creates GatewayClass `eg`. This command works without opening the interactive menu.
 - GitOps install: add an Argo CD Application for the same chart and declare GatewayClass `eg` in the connected Git repository.
 - Choose one manager for the `eg` release and GatewayClass. Do not let EasyKind and Argo CD manage the same resources at once.
 - Add `Gateway`, `HTTPRoute` and related resources to Git when using GitOps. Install kube-vip first if a `Gateway` needs a `LoadBalancer` address.
+
+After running `bootstrap.sh`, call `main --install-envoy-gateway` from any terminal. From a source checkout, run `./scripts/main --install-envoy-gateway`.
 
 ### Argo CD
 - Version: prompted at install time. Press Enter to use the latest GitHub release, or type a version (for example `v3.5.6`). Set `ARGOCD_VERSION` to change the default shown in the prompt
@@ -132,7 +133,7 @@ Run from repo root for dev:
 ./scripts/create_cluster
 ./scripts/install_calico
 ./scripts/kube_vip
-./scripts/install_envoy_gateway
+./scripts/main --install-envoy-gateway
 ./scripts/install_argocd
 ./scripts/configure_gitops
 ./scripts/install_etcdctl

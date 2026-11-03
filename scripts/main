@@ -20,6 +20,31 @@ if command -v go >/dev/null 2>&1; then
   export PATH="$(go env GOPATH)/bin:${PATH}"
 fi
 
+case "${1:-}" in
+  --install-envoy-gateway)
+    if (( $# != 1 )); then
+      log_error "Usage: main --install-envoy-gateway"
+      exit 2
+    fi
+    install_envoy_gateway || {
+      log_error "Envoy Gateway installation failed"
+      exit 1
+    }
+    exit 0
+    ;;
+  "")
+    if (( $# != 0 )); then
+      log_error "Usage: main [--install-envoy-gateway]"
+      exit 2
+    fi
+    ;;
+  *)
+    log_error "Unknown option: $1"
+    log_info "Usage: main [--install-envoy-gateway]"
+    exit 2
+    ;;
+esac
+
 if ! command -v gum >/dev/null 2>&1; then
   log_error "gum is required but not installed. See https://github.com/charmbracelet/gum"
   exit 1
@@ -28,7 +53,8 @@ fi
 gum style --foreground 212 --border double --padding "1 2" --margin "1" \
   "EasyKind
 
-Run the cluster bootstrap steps first. Envoy Gateway can be installed here or managed from GitOps; use only one method for each component.
+Run the cluster bootstrap steps first. Install Envoy Gateway with: main --install-envoy-gateway
+Alternatively, manage it from GitOps. Use only one method for the Envoy Gateway release.
 Other platform add-ons can be managed from the GitOps repo.
 
 Run the scripts in this order:
@@ -36,62 +62,57 @@ Run the scripts in this order:
   2. Create cluster
   3. Install Calico
   4. Install kube-vip
-  5. Install Envoy Gateway (optional; or configure it in GitOps)
-  6. Install Argo CD
-  7. Configure GitOps
-  8. Install etcdctl/etcdutl
-  9. Upgrade cluster"
+  5. Install Argo CD
+  6. Configure GitOps
+  7. Install etcdctl/etcdutl
+  8. Upgrade cluster"
 
 while true; do
   choice=$(gum choose --height 20 --header "What do you want to do?" \
-    "Install binaries" \
-    "Create cluster" \
-    "Install Calico" \
-    "Install kube-vip" \
-    "Install Envoy Gateway" \
-    "Install Argo CD" \
-    "Configure GitOps" \
-    "Install etcdctl/etcdutl" \
-    "Upgrade cluster" \
-    "Delete cluster" \
-    "Cleanup" \
-    "Exit")
+    "1. Install binaries" \
+    "2. Create cluster" \
+    "3. Install Calico" \
+    "4. Install kube-vip" \
+    "5. Install Argo CD" \
+    "6. Configure GitOps" \
+    "7. Install etcdctl/etcdutl" \
+    "8. Upgrade cluster" \
+    "9. Delete cluster" \
+    "10. Cleanup" \
+    "11. Exit")
 
   case "$choice" in
-    "Install binaries")
+    "1. Install binaries")
       install_binaries || log_error "Binary installation failed"
       ;;
-    "Create cluster")
+    "2. Create cluster")
       create_cluster || log_error "Cluster creation failed"
       ;;
-    "Install Calico")
+    "3. Install Calico")
       install_calico || log_error "Calico installation failed"
       ;;
-    "Install kube-vip")
+    "4. Install kube-vip")
       install_kube_vip || log_error "kube-vip installation failed"
       ;;
-    "Install Envoy Gateway")
-      install_envoy_gateway || log_error "Envoy Gateway installation failed"
-      ;;
-    "Install Argo CD")
+    "5. Install Argo CD")
       install_argocd || log_error "Argo CD installation failed"
       ;;
-    "Configure GitOps")
+    "6. Configure GitOps")
       configure_gitops || log_error "GitOps configuration failed"
       ;;
-    "Install etcdctl/etcdutl")
+    "7. Install etcdctl/etcdutl")
       install_etcdutl || log_error "etcdctl/etcdutl installation failed"
       ;;
-    "Upgrade cluster")
+    "8. Upgrade cluster")
       upgrade_cluster || log_error "Cluster upgrade failed"
       ;;
-    "Delete cluster")
+    "9. Delete cluster")
       delete_cluster || log_error "Cluster deletion failed"
       ;;
-    "Cleanup")
+    "10. Cleanup")
       cleanup_scripts_folder || log_error "Cleanup failed"
       ;;
-    "Exit"|"")
+    "11. Exit"|"")
       log_info "Goodbye"
       break
       ;;
