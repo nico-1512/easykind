@@ -25,6 +25,127 @@ cluster_config_path () {
   return 1
 }
 
+prompt_nonnegative_integer () {
+  local output_name="$1"
+  local prompt="$2"
+  local allow_zero="$3"
+  local default_value="${4:-}"
+  local value=""
+
+  while true; do
+    read -r -p "$prompt" value
+    value="${value:-$default_value}"
+    if [[ "$allow_zero" == "yes" && "$value" =~ ^(0|[1-9][0-9]*)$ ]]; then
+      printf -v "$output_name" '%s' "$value"
+      return 0
+    fi
+    if [[ "$allow_zero" != "yes" && "$value" =~ ^[1-9][0-9]*$ ]]; then
+      printf -v "$output_name" '%s' "$value"
+      return 0
+    fi
+    if [[ "$allow_zero" == "yes" ]]; then
+      log_error "Enter a whole number greater than or equal to zero"
+    else
+      log_error "Enter a whole number greater than zero"
+    fi
+  done
+}
+
+write_generated_cluster_config () {
+  local output_path="$1"
+  local control_planes="$2"
+  local workers="$3"
+  local index
+
+  cat > "$output_path" <<'EOF'
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kind
+networking:
+  disableDefaultCNI: true
+  podSubnet: "192.168.0.0/16"
+nodes:
+EOF
+
+  for ((index = 1; index <= control_planes; index++)); do
+    if (( index == 1 )); then
+      cat >> "$output_path" <<'EOF'
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+EOF
+    else
+      printf '  - role: control-plane\n' >> "$output_path"
+    fi
+  done
+
+  for ((index = 0; index < workers; index++)); do
+    printf '  - role: worker\n' >> "$output_path"
+  done
+}
+
+select_cluster_config () {
+  local choice=""
+  local path=""
+  local control_planes=""
+  local workers=""
+
+  if [[ -n "${KIND_CLUSTER_CONFIG:-}" ]]; then
+    if [[ ! -r "$KIND_CLUSTER_CONFIG" ]]; then
+      log_error "KIND_CLUSTER_CONFIG is not a readable file: ${KIND_CLUSTER_CONFIG}"
+      return 1
+    fi
+    cluster_config="$KIND_CLUSTER_CONFIG"
+    config_description="$cluster_config"
+    log_info "Using cluster config from KIND_CLUSTER_CONFIG"
+    return 0
+  fi
+
+  read -r -p "Cluster config: [d]efault, [f]ile, or [n]ode counts [d]: " choice
+  case "${choice:-d}" in
+    d|D)
+      if ! cluster_config="$(cluster_config_path)"; then
+        log_error "Default cluster config not found. Set KIND_CLUSTER_CONFIG or install assets/config-cluster.yaml."
+        return 1
+      fi
+      ;;
+    f|F)
+      read -r -p "Path to a Kind Cluster YAML file: " path
+      if [[ ! -r "$path" ]]; then
+        log_error "Cluster config is not a readable file: ${path}"
+        return 1
+      fi
+      cluster_config="$path"
+      ;;
+    n|N)
+      prompt_nonnegative_integer control_planes "Number of control-plane nodes [3]: " no 3
+      prompt_nonnegative_integer workers "Number of worker nodes [1]: " yes 1
+      temp_config="$(mktemp "${TMPDIR:-/tmp}/easykind-kind-config.XXXXXX")"
+      write_generated_cluster_config "$temp_config" "$control_planes" "$workers"
+      cluster_config="$temp_config"
+      config_description="generated config (${control_planes} control-plane, ${workers} worker)"
+      return 0
+      ;;
+    *)
+      log_error "Choose d for the default, f for a YAML file, or n for node counts"
+      return 1
+      ;;
+  esac
+
+  config_description="$cluster_config"
+}
+
 create_cluster () {
 
   local cluster_name=""
@@ -33,6 +154,9 @@ create_cluster () {
   local kubernetes_version=""
   local default_kubernetes_version="${KIND_KUBERNETES_VERSION:-v1.37.0}"
   local node_image=""
+  local config_description=""
+  local temp_config=""
+  local create_status=0
   local kind_args=()
   cluster_name=$(request_user_input "Enter a name for the kind cluster: ")
 
@@ -41,8 +165,7 @@ create_cluster () {
     return
   fi
 
-  if ! cluster_config="$(cluster_config_path)"; then
-    log_error "Cluster config not found. Set KIND_CLUSTER_CONFIG or install assets/config-cluster.yaml."
+  if ! select_cluster_config; then
     return 1
   fi
 
@@ -61,8 +184,18 @@ create_cluster () {
       ;;
   esac
 
-  log_info "Creating kind cluster '${cluster_name}' using ${cluster_config} (${node_image})"
-  kind "${kind_args[@]}"
+  log_info "Creating kind cluster '${cluster_name}' using ${config_description} (${node_image})"
+  if kind "${kind_args[@]}"; then
+    create_status=0
+  else
+    create_status=$?
+  fi
+
+  if [[ -n "$temp_config" ]]; then
+    rm -f "$temp_config"
+  fi
+
+  return "$create_status"
 }
 
 

@@ -49,7 +49,7 @@ main
 
 The menu walks you through:
 1. **Install binaries** - Docker, kind, kubectl, helm, adds `alias k='kubectl'` to `~/.bashrc`
-2. **Create cluster** - Prompts for cluster name and Kubernetes (`kindest/node`) version, uses a Kind config, optional `--retain` for failed nodes
+2. **Create cluster** - Prompts for cluster name and lets you use the default Kind config, provide your own Kind `Cluster` YAML, or choose control-plane and worker counts. Then prompts for the Kubernetes (`kindest/node`) version and optional `--retain` for failed nodes
 3. **Install Calico** - Prompts for cluster name and Calico version (Enter uses the latest release), then installs Calico. The kind config must disable the default CNI and use the Calico pod subnet
 4. **Install kube-vip** - Prompts for cluster name and kube-vip version, auto-detects the LoadBalancer range from the Docker `kind` network (or asks), and bootstraps kube-vip for service LoadBalancer addresses
 5. **Install Envoy Gateway** - Installs Envoy Gateway and GatewayClass `eg`. Alternatively, declare the chart and GatewayClass in Git and let Argo CD manage them; do not use both methods for the same release
@@ -64,12 +64,13 @@ The menu walks you through:
 ## Configuration
 
 ### Cluster config
-`create_cluster` looks for `config-cluster.yaml` in this order:
-1. `KIND_CLUSTER_CONFIG` environment variable
-2. `scripts/../assets/config-cluster.yaml` (dev checkout)
-3. `/usr/local/share/easykind/assets/config-cluster.yaml` (installed)
+When `KIND_CLUSTER_CONFIG` is set, `create_cluster` uses that readable Kind `Cluster` YAML file directly. Otherwise, choose one of three options at the prompt:
 
-The included `assets/config-cluster.yaml` creates 3 control-plane nodes and 1 worker. It disables the default CNI and sets `podSubnet: "192.168.0.0/16"` so Calico can be installed after the cluster is created.
+1. **Default**: use `assets/config-cluster.yaml` from the checkout, or `/usr/local/share/easykind/assets/config-cluster.yaml` after installation.
+2. **File**: provide a path to your own Kind `Cluster` YAML file.
+3. **Node counts**: enter the number of control-plane nodes (minimum 1) and worker nodes (0 or more). EasyKind generates a temporary Kind config and removes it after cluster creation.
+
+The included default config creates 3 control-plane nodes and 1 worker. The generated node-count config uses the same networking settings and port mappings. Both disable the default CNI and set `podSubnet: "192.168.0.0/16"` so Calico can be installed after the cluster is created. If you provide your own file and plan to install Calico, configure those networking settings in your YAML too.
 
 The Kubernetes version is prompted at creation time and passed as `--image kindest/node:<version>`. Press Enter to use the default (`v1.37.0`, the kind `v0.33.0` default) or set `KIND_KUBERNETES_VERSION` to override the default.
 
@@ -144,7 +145,7 @@ Run from repo root for dev:
 
 - **gum not found**: Install gum or run `bootstrap.sh`. The menu exits if gum is missing.
 - **Docker group not applied**: After installing Docker, log out and back in (or `newgrp docker`).
-- **Cluster config missing**: Set `KIND_CLUSTER_CONFIG=/path/to/config.yaml` or copy a config to `assets/` before running.
+- **Cluster config missing**: Choose a readable YAML file with the create-cluster prompt, or set `KIND_CLUSTER_CONFIG=/path/to/config.yaml`. The default option needs the included `assets/config-cluster.yaml` (or the installed asset).
 - **Calico refuses to install**: The cluster still has kindnet. Recreate the cluster with `networking.disableDefaultCNI: true` and `podSubnet: "192.168.0.0/16"` before running `install_calico`.
 - **kube-vip range wrong / network not found**: Ensure Docker is running and the `kind` network exists (`docker network inspect kind`). If not using default Kind subnet, you'll be prompted to enter a range manually.
 - **Envoy Gateway is not ready**: Check the `envoy-gateway` Argo CD Application and its events. If a `Gateway` has no address, verify kube-vip and its configured LoadBalancer range.
